@@ -1,0 +1,9 @@
+langchain
+langgraph
+langchain-ollama
+langchain-community
+langchain-core
+chromadb
+tiktoken
+ollama
+rich
