@@ -1,6 +1,6 @@
 # RAG for UTFPR documents
 
-## Requeriments:
+## Requirements:
 
 Python<3.12
 
