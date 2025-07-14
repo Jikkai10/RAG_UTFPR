@@ -28,10 +28,7 @@ vector_store = Chroma(
     collection_name="rag",
     embedding_function=embeddings,
 )
-output_path = "./data/"
-#file_path = output_path + 'RODP2.pdf'
 
-os.environ["TESSDATA_PREFIX"] = os.path.abspath('./tessdata')
 
 model = FormulaRecognition(model_name="PP-FormulaNet_plus-M")
 
@@ -220,20 +217,6 @@ def run():
 
     
     insert_data(documents, metadatas)
-
-    # documents_names = os.listdir(data_path)
-    # documents_names_size = len(documents_names)
-    # for i, document_name in enumerate(documents_names): 
-    #     print(f"{i+1}/{documents_names_size}: {document_name}")
-
-    #     document_texts, document_chunks = get_document(os.path.join(data_path, document_name))
-    #     #document_embeddings, document_metadatas = prepare_documents(document_chunks, document_name)
-    #     documents.extend(document_chunks)
-    #     #embeddings.extend(document_embeddings)
-    #     #metadatas.extend(document_metadatas)
-    
-    # ids = create_ids(documents)
-    # insert_data(documents)
     
 if __name__ == "__main__":
     run()
