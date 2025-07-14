@@ -87,17 +87,14 @@ def custom_split_by_hierarchy(full_text: str,
                               nome: str,
                               url: str
                               ) -> Tuple[List[str], List[Dict[str, str]]]:
-    """
-    Percorre o documento linha a linha, detecta Capítulo, Seção e Artigo,
-    acumulando cada artigo (ou sub‑chunks, se grande) em 'chunks'.
-    """
+    
     current_cap = "—"   # travessão indica 'desconhecido' nos primeiros artigos
     current_sec = "—"
     
     chunks: List[str] = []
     metadatas: List[Dict[str, str]] = []
 
-    #lines = full_text.splitlines()
+    
     buff_art_lines = []
     art_number = "-"
     
@@ -115,7 +112,7 @@ def custom_split_by_hierarchy(full_text: str,
     
     aux = "" 
     for el in full_text:
-        # 1. Verificar novos cabeçalhos
+        
         if "Table" in str(type(el)):
             t = aux + el.metadata.text_as_html + "\n"
             desc = get_description(t)
@@ -129,7 +126,7 @@ def custom_split_by_hierarchy(full_text: str,
         if "Image" in str(type(el)):
             img = el.metadata.image_path
             
-            img_bytes = base64.b64decode(el.metadata.image_base64)  # → bytes
+            img_bytes = base64.b64decode(el.metadata.image_base64)  
             buf = np.frombuffer(img_bytes, dtype=np.uint8)
             img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
             output = model.predict(input=img, batch_size=1)
@@ -145,7 +142,7 @@ def custom_split_by_hierarchy(full_text: str,
                 flush_article()
                 current_cap = m.group(1)     # ex: 'I', 'II'…
                 current_sec = "—"            # reinicia seção
-                continue                      # pula linha de cabeçalho
+                continue                      
 
             if (m := SEC_RE.match(el.text)):
                 flush_article()
@@ -155,12 +152,12 @@ def custom_split_by_hierarchy(full_text: str,
             if (m := ART_RE.match(el.text)):
                 flush_article()
                 art_number = m.group(1)       # número do artigo
-                # inclui a linha do próprio artigo no buffer
+                
                 buff_art_lines.append(el.text)
                 continue
             
             aux = el.text + "\n"
-            # 2. Linhas comuns ⇒ adiciona ao buffer do artigo corrente
+            
             if art_number:
                 buff_art_lines.append(el.text)
     
@@ -169,18 +166,12 @@ def custom_split_by_hierarchy(full_text: str,
     return chunks, metadatas
 
 def get_document(doc):
-    # Reference: https://docs.unstructured.io/open-source/core-functionality/chunking
-    elements = partition_html(
     
+    elements = partition_html(
         url=doc["url"],
         extract_image_block_types=["Image"],
-        
-        
         extract_image_block_to_payload=True,
-    
-    
     )
-    
     
     return custom_split_by_hierarchy(elements, doc["name"], doc["url"] )
 
@@ -188,12 +179,7 @@ def get_document(doc):
 
 def insert_data(documents, metadatas):
 
-    # collection.add(
-    #     embeddings=embeddings,
-    #     documents=documents,
-    #     metadatas=metadatas,
-    #     ids=ids
-    # )
+    
     vector_store.add_documents(
         [
             Document(
@@ -220,7 +206,6 @@ docs =[
 
 def run():
     print("Running prep docs...")
-    data_path = './data' # CONFIG YOUR PATH
 
     documents = []
     metadatas = []
@@ -233,10 +218,7 @@ def run():
         documents.extend(chunks)
         metadatas.extend(meta)
 
-    for i, chunk in enumerate(documents):
-        print(f"Chunk {i+1}:\n{chunk}\n")
-        print(f"Metadata: {metadatas[i]}\n")
-        print("-" * 40)
+    
     insert_data(documents, metadatas)
 
     # documents_names = os.listdir(data_path)
