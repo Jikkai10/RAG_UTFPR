@@ -8,7 +8,8 @@ from langchain_chroma import Chroma
 
 from paddleocr import FormulaRecognition
 from langchain_core.documents import Document
-
+import requests
+from bs4 import BeautifulSoup
 import base64
 import numpy as np
 import cv2 
@@ -43,7 +44,8 @@ def get_description(table):
         messages=[{
             'role': 'user',
             'content': f"""
-                    forneça uma descrição simples e precisa da tabela a seguir, não forneça mais nada, apenas a descrição
+                    forneça uma descrição simples e precisa da tabela a seguir em até 450 caracteres, não forneça mais nada, apenas a descrição
+
                     tabela:
                     {table} 
             """,
@@ -64,7 +66,10 @@ def maybe_split(long_text: str,
     """
     Se o artigo for muito grande, divide mantendo o cabeçalho.
     """
-    header = f"Capítulo {capitulo}\nSeção {secao}\nArt. {artigo}\n\n"
+    if secao == "—":
+        header = f"Capítulo {capitulo}\nArt. {artigo}\n\n"
+    else:
+        header = f"Capítulo {capitulo}\nSeção {secao}\nArt. {artigo}\n\n"
     
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1500,
@@ -78,11 +83,12 @@ def maybe_split(long_text: str,
                     {"capitulo": capitulo, "secao": secao, "artigo": artigo, "fonte": nome, "fonte_url": url   }))
     return out
     
-
-
+import pyhtml2md
+import markdownify
 def custom_split_by_hierarchy(full_text: str,
                               nome: str,
-                              url: str
+                              url: str,
+                              tables: List[str] = None,
                               ) -> Tuple[List[str], List[Dict[str, str]]]:
     
     current_cap = "—"   # travessão indica 'desconhecido' nos primeiros artigos
@@ -108,15 +114,31 @@ def custom_split_by_hierarchy(full_text: str,
         art_number = None
     
     aux = "" 
+    cont_table = 0  
     for el in full_text:
         
         if "Table" in str(type(el)):
-            t = aux + el.metadata.text_as_html + "\n"
+            #tab = pyhtml2md.convert(el.metadata.text_as_html)
+            #tab = markdownify.markdownify(el.metadata.text_as_html, heading_style="ATX")
+            t = aux + tables[cont_table] + "\n"
+            
             desc = get_description(t)
-            desc = desc + "\n" + t
-            header = f"Capítulo {current_cap}\nSeção {current_sec}\n\n"
-            chunks.append(header + desc.strip())
-            metadatas.append({"capitulo": current_cap, "secao": current_sec, "artigo": "-", "fonte": nome, "fonte_url": url})
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=0,  
+                length_function=len,
+            )
+            texts = splitter.split_text(tables[cont_table])
+            
+            cont_table += 1
+            for text in texts:
+                text_tab = aux + "\n" + desc + "\n" + text.strip()
+                if current_sec == "—":
+                    header = f"Capítulo {current_cap}\n\n"
+                else:
+                    header = f"Capítulo {current_cap}\nSeção {current_sec}\n\n"
+                chunks.append(header + text_tab.strip())
+                metadatas.append({"capitulo": current_cap, "secao": current_sec, "artigo": "-", "fonte": nome, "fonte_url": url})
             aux = ""
             continue
         
@@ -162,15 +184,96 @@ def custom_split_by_hierarchy(full_text: str,
     flush_article()
     return chunks, metadatas
 
+def is_table_empty(table):
+    for row in table.find_all("tr"):
+        cells = row.find_all(["td", "th"])
+        for cell in cells:
+            text = cell.get_text(strip=True)
+            if text:  # se houver qualquer conteúdo não vazio
+                return False
+    return True 
+
+def get_table_text(table):
+    soup = BeautifulSoup(table, "html.parser")
+    rows = soup.find_all("tr")
+    headers = [th.get_text(strip=True) for th in rows[0].find_all("td")]
+    data_rows = rows[1:]
+
+    # Armazena valores ativos de rowspan
+    active_rowspans = {}
+
+    frases = ""
+    for i, row in enumerate(data_rows):
+        cells = []
+        col_index = 0
+        tds = row.find_all(['td', 'th'])
+        td_idx = 0
+        
+        while col_index < len(headers):
+            # Verifica se temos rowspan de linha anterior para essa coluna
+            if col_index in active_rowspans and active_rowspans[col_index]['rows_left'] > 0:
+                cells.append(active_rowspans[col_index]['value'])
+                active_rowspans[col_index]['rows_left'] -= 1
+                col_index += 1
+                continue
+            
+            if td_idx >= len(tds):
+                return table
+            cell = tds[td_idx]
+            td_idx += 1
+            
+            
+            value = cell.get_text(strip=True)
+            rowspan = int(cell.get('rowspan', 1))
+            colspan = int(cell.get('colspan', 1))
+            
+
+            if rowspan > 1:
+                active_rowspans[col_index] = {'value': value, 'rows_left': rowspan - 1}
+
+            if colspan > 1:
+                for _ in range(colspan):
+                    cells.append(value)
+                    col_index += 1
+            else:
+                cells.append(value)
+                col_index += 1
+            
+
+        # Montar frase com as células correspondentes
+        row_dict = dict(zip(headers, cells))
+        frase = ""
+        for header in headers:
+            frase += f"{header}: {row_dict[header]}, "
+        
+        frases += frase + "\n"
+
+    print(frases)
+    return frases
+
 def get_document(doc):
-    
+    """
+        partition html naturalmente exclui informações adicionais nas tags, como rowspan e colspan,
+        o que pode ser problemático para descobrir o formato das tabelas,
+        por isso o tratamento das tabelas é feito separadamente.
+    """
+    resq = requests.get(doc["url"])
+    soup = BeautifulSoup(resq.content, 'lxml')
+    tables = soup.find_all('table')
+    tables = [str(table) for table in tables if not is_table_empty(table)] 
+    frases = []
+    for table in tables:
+        frases.append(get_table_text(table))
+        
     elements = partition_html(
-        url=doc["url"],
+        #url=doc["url"],
+        text=resq.text,
         extract_image_block_types=["Image"],
         extract_image_block_to_payload=True,
+        
     )
-    
-    return custom_split_by_hierarchy(elements, doc["name"], doc["url"] )
+
+    return custom_split_by_hierarchy(elements, doc["name"], doc["url"], frases)
 
 
 
@@ -215,7 +318,8 @@ def run():
         documents.extend(chunks)
         metadatas.extend(meta)
 
-    
+    for i, doc in enumerate(documents):
+        print(f"Chunk {i+1}/{len(documents)}: {doc}")
     insert_data(documents, metadatas)
     
 if __name__ == "__main__":

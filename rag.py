@@ -3,7 +3,7 @@ import os
 
 from langchain_ollama import ChatOllama
 llm = ChatOllama(model="llama3.1", temperature=0.5)
-
+from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain_ollama import OllamaEmbeddings
 
 embeddings = OllamaEmbeddings(
@@ -40,11 +40,11 @@ def retrieve(query: str):
     query_embedding = get_embedding(query)
     relevant_documents = collection.query(
         query_embeddings=[query_embedding],
-        n_results=3
+        n_results=10
     )
     formatted_list = []    
     for i, doc in enumerate(relevant_documents["documents"][0]):
-        formatted_list.append("[{}]: {}".format(relevant_documents["metadatas"][0][i]["source"], doc))
+        formatted_list.append("[{}]({}): {}".format(relevant_documents["metadatas"][0][i]["fonte"], relevant_documents["metadatas"][0][i]["fonte_url"], doc))
     
     documents_str = "\n".join(formatted_list)
     # serialized = "\n\n".join(
@@ -79,7 +79,7 @@ def generate(state: MessagesState):
     system_message_content = (
         """Você é um assistente de IA que responde as dúvidas dos usuários com bases nos documentos a baixo.
         Os documentos abaixo apresentam as fontes atualizadas e devem ser consideradas como verdade.
-        Cite a fonte quando fornecer a informação. Se não souber a resposta ou não haver documentos, diga que não sabe.
+        Cite a fonte quando fornecer a informação, nunca altere o link. Se não souber a resposta ou não haver documentos, diga que não sabe.
         Sempre escreva no formato markdown
         
         
@@ -127,7 +127,7 @@ graph = graph_builder.compile(checkpointer=memory)
 
 config = {"configurable": {"thread_id": "abc123"}}
 
-input_message = "Como é dividido o ano letivo?"
+input_message = "qual o prazo máximo de entrega para o relatório parcial de estágio?"
 from rich.console import Console
 from rich.markdown import Markdown
 console = Console()
@@ -140,6 +140,7 @@ for step in graph.stream(
     
     md = Markdown(step["messages"][-1].content)
     console.print(md)
+    console.print("--" * 20)
     #step["messages"][-1].pretty_print()
     
 input_message = "Quais sao as possiveis modalidades de ensino?"
@@ -151,6 +152,7 @@ for step in graph.stream(
 ):
     md = Markdown(step["messages"][-1].content)
     console.print(md)
+    console.print("--" * 20)
     #step["messages"][-1].pretty_print()
     
 
