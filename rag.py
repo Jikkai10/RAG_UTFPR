@@ -11,90 +11,147 @@ embeddings = OllamaEmbeddings(
 )
 from langchain_core.vectorstores import InMemoryVectorStore
 
-vector_store = InMemoryVectorStore(embeddings)
+#vector_store = InMemoryVectorStore(embeddings)
 
-from langgraph.graph import MessagesState, StateGraph 
+from langgraph.graph import MessagesState, StateGraph
 from langchain_core.tools import tool
 from langchain_core.messages import SystemMessage
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph import END
 from langgraph.checkpoint.memory import MemorySaver
 import chromadb
+from langchain_chroma import Chroma
+from langchain_core.output_parsers import BaseOutputParser
+from langchain_core.prompts import PromptTemplate
+from typing import List
+from pydantic import BaseModel, Field
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain_community.document_compressors import FlashrankRerank
+from langchain.retrievers.document_compressors import CrossEncoderReranker
+from sentence_transformers import CrossEncoder
+from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+import logging
 
+logging.basicConfig()
+logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
+# chromadb_path = "./db"
+# chroma_client = chromadb.PersistentClient(path=chromadb_path)
+# collection = chroma_client.get_or_create_collection(name="rag")
 
-chromadb_path = "./db" 
+chromadb_path = "./db" # CONFIG YOUR PATH
 chroma_client = chromadb.PersistentClient(path=chromadb_path)
 collection = chroma_client.get_or_create_collection(name="rag")
+vector_store = Chroma(
+    client=chroma_client,
+    collection_name="rag",
+    embedding_function=embeddings,
+)
+class LineListOutputParser(BaseOutputParser[List[str]]):
+    """Output parser for a list of lines."""
+
+    def parse(self, text: str) -> List[str]:
+        lines = text.strip().split("\n")
+        return list(filter(None, lines))  # Remove empty lines
+
+
+output_parser = LineListOutputParser()
+
+QUERY_PROMPT = PromptTemplate(
+    input_variables=["question"],
+    template="""Você é um assistente baseado em um modelo de linguagem de IA.
+    Sua tarefa é gerar três versões diferentes da pergunta feita pelo usuário para recuperar documentos relevantes de um banco de dados vetorial.
+    Ao gerar múltiplas perspectivas da pergunta original, seu objetivo é ajudar o usuário a superar algumas das limitações da busca por similaridade baseada em distância.
+    Forneça essas perguntas alternativas separadas por quebras de linha. Retorne apenas as perguntas, sem explicações adicionais.
+    Pergunta original: {question}""",
+)
+
+
+llm_retriever = ChatOllama(model="llama3.1", temperature=0)
+llm_chain = QUERY_PROMPT | llm_retriever | output_parser
+retriever = MultiQueryRetriever(
+    retriever=vector_store.as_retriever(), llm_chain=llm_chain, parser_key="lines", include_original=True
+)
+model = HuggingFaceCrossEncoder(model_name="BAAI/bge-reranker-base")
+compressor = CrossEncoderReranker(model=model, top_n=5)
+compression_retriever = ContextualCompressionRetriever(
+    base_compressor=compressor, base_retriever=retriever
+)
+#hf_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+#reranker = HuggingFaceRerank(model_name="cross-encoder/ms-marco-MiniLM-L-6-v2")
+
 
 graph_builder = StateGraph(MessagesState)
 def get_embedding(text):
-    
+
     embedding = embeddings.embed_query(text)
-    
+
     return embedding
 
 @tool(response_format="content_and_artifact")
 def retrieve(query: str):
     """Retrieve information related to a query."""
-    #retrieved_docs = vector_store.similarity_search(query, k=2)
-    query_embedding = get_embedding(query)
-    relevant_documents = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=10
-    )
-    formatted_list = []    
-    for i, doc in enumerate(relevant_documents["documents"][0]):
-        formatted_list.append("[{}]({}): {}".format(relevant_documents["metadatas"][0][i]["fonte"], relevant_documents["metadatas"][0][i]["fonte_url"], doc))
-    
-    documents_str = "\n".join(formatted_list)
-    # serialized = "\n\n".join(
-    #     (f"Source: {doc.metadata}\n" f"Content: {doc.page_content}") for doc in retrieved_docs
+    #retrieved_docs = vector_store.similarity_search(query, k=5)
+    retrieved_docs = compression_retriever.invoke(query)
+
+    # print(f"Retrieval  {retrieved_docs}")
+    # query_embedding = get_embedding(query)
+    # relevant_documents = collection.query(
+    #     query_embeddings=[query_embedding],
+    #     n_results=10
     # )
-    
-    
-    return documents_str, relevant_documents
+    # formatted_list = []
+    # for i, doc in enumerate(relevant_documents["documents"][0]):
+    #     formatted_list.append("[{}]({}): {}".format(relevant_documents["metadatas"][0][i]["fonte"], relevant_documents["metadatas"][0][i]["fonte_url"], doc))
+
+    # documents_str = "\n".join(formatted_list)
+    serialized = "\n\n".join(
+        (f"Source: {doc.metadata}\n" f"Content: {doc.page_content}") for doc in retrieved_docs
+    )
+
+    return serialized, retrieved_docs
+    #return documents_str, relevant_documents
 
 def query_or_respond(state: MessagesState):
     """Generate tool call retrieve or respond."""
-    llm_with_tools = llm.bind_tools([retrieve]) 
+    llm_with_tools = llm.bind_tools([retrieve])
     response = llm_with_tools.invoke(state["messages"])
-    
+
     return {"messages": [response]}
 
 tools = ToolNode([retrieve])
 
 def generate(state: MessagesState):
     """Generate a answer."""
-    
+
     recent_tool_messages = []
     for message in reversed(state["messages"]):
         if message.type == "tool":
             recent_tool_messages.append(message)
         else:
             break
-    
+
     tool_messages = recent_tool_messages[::-1]
-    
+
     docs_content = "\n\n".join(doc.content for doc in tool_messages)
     system_message_content = (
         """Você é um assistente de IA que responde as dúvidas dos usuários com bases nos documentos a baixo.
         Os documentos abaixo apresentam as fontes atualizadas e devem ser consideradas como verdade.
         Cite a fonte quando fornecer a informação, nunca altere o link. Se não souber a resposta ou não haver documentos, diga que não sabe.
         Sempre escreva no formato markdown
-        
-        
+
+
         Documentos:
         \n\n
         """
         f"{docs_content}"
-       
-        
+
+
     )
     conversation_messages = [
         message
         for message in state["messages"]
         if message.type in ("human", "system")
-        or (message.type == "ai" and not message.tool_calls) 
+        or (message.type == "ai" and not message.tool_calls)
     ]
     prompt = [SystemMessage(system_message_content)] + conversation_messages
 
@@ -137,12 +194,12 @@ for step in graph.stream(
     stream_mode="values",
     config=config,
 ):
-    
+
     md = Markdown(step["messages"][-1].content)
     console.print(md)
     console.print("--" * 20)
     #step["messages"][-1].pretty_print()
-    
+
 input_message = "Quais sao as possiveis modalidades de ensino?"
 
 for step in graph.stream(
@@ -154,6 +211,6 @@ for step in graph.stream(
     console.print(md)
     console.print("--" * 20)
     #step["messages"][-1].pretty_print()
-    
+
 
 import markdown
