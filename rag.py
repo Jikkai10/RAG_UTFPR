@@ -1,15 +1,26 @@
-
-import os
-
 from langchain_ollama import ChatOllama
-llm = ChatOllama(model="llama3.1", temperature=0.5)
 from langchain.retrievers.multi_query import MultiQueryRetriever
-from langchain_ollama import OllamaEmbeddings
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
+from langgraph.graph import MessagesState, StateGraph
+from langchain_core.tools import tool
+from langchain_core.messages import SystemMessage
+from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.graph import END
+from langgraph.checkpoint.memory import MemorySaver
+from langchain_chroma import Chroma
+from langchain_core.output_parsers import BaseOutputParser
+from langchain_core.prompts import PromptTemplate
+from typing import List
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers.document_compressors import CrossEncoderReranker
+from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+import logging
 
-# embeddings = OllamaEmbeddings(
-#     model="nomic-embed-text",
-# )
+logging.basicConfig()
+logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
+
+
+llm = ChatOllama(model="llama3.1", temperature=0.5)
 model_name = "Alibaba-NLP/gte-multilingual-base"
 
 embeddings = HuggingFaceEmbeddings(
@@ -18,38 +29,7 @@ embeddings = HuggingFaceEmbeddings(
     model_kwargs={'trust_remote_code': True}
     
 )
-from langchain_core.vectorstores import InMemoryVectorStore
-
-#vector_store = InMemoryVectorStore(embeddings)
-
-from langgraph.graph import MessagesState, StateGraph
-from langchain_core.tools import tool
-from langchain_core.messages import SystemMessage
-from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.graph import END
-from langgraph.checkpoint.memory import MemorySaver
-import chromadb
-from langchain_chroma import Chroma
-from langchain_core.output_parsers import BaseOutputParser
-from langchain_core.prompts import PromptTemplate
-from typing import List
-from pydantic import BaseModel, Field
-from langchain.retrievers import ContextualCompressionRetriever
-from langchain_community.document_compressors import FlashrankRerank
-from langchain.retrievers.document_compressors import CrossEncoderReranker
-from sentence_transformers import CrossEncoder
-from langchain_community.cross_encoders import HuggingFaceCrossEncoder
-import logging
-
-logging.basicConfig()
-logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
-# chromadb_path = "./db"
-# chroma_client = chromadb.PersistentClient(path=chromadb_path)
-# collection = chroma_client.get_or_create_collection(name="rag")
-
 chromadb_path = "./db" # CONFIG YOUR PATH
-#chroma_client = chromadb.PersistentClient(path=chromadb_path)
-#collection = chroma_client.get_or_create_collection(name="rag")
 vector_store = Chroma(
     #client=chroma_client,
     collection_name="rag",
@@ -86,8 +66,7 @@ compressor = CrossEncoderReranker(model=model, top_n=5)
 compression_retriever = ContextualCompressionRetriever(
     base_compressor=compressor, base_retriever=retriever
 )
-#hf_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-#reranker = HuggingFaceRerank(model_name="cross-encoder/ms-marco-MiniLM-L-6-v2")
+
 
 
 graph_builder = StateGraph(MessagesState)
@@ -103,17 +82,7 @@ def retrieve(query: str):
     #retrieved_docs = vector_store.similarity_search(query, k=5)
     retrieved_docs = compression_retriever.invoke(query)
 
-    # print(f"Retrieval  {retrieved_docs}")
-    # query_embedding = get_embedding(query)
-    # relevant_documents = collection.query(
-    #     query_embeddings=[query_embedding],
-    #     n_results=10
-    # )
-    # formatted_list = []
-    # for i, doc in enumerate(relevant_documents["documents"][0]):
-    #     formatted_list.append("[{}]({}): {}".format(relevant_documents["metadatas"][0][i]["fonte"], relevant_documents["metadatas"][0][i]["fonte_url"], doc))
-
-    # documents_str = "\n".join(formatted_list)
+    
     serialized = "\n\n".join(
         (f"Source: {doc.metadata}\n" f"Content: {doc.page_content}") for doc in retrieved_docs
     )

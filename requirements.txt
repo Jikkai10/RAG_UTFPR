@@ -1,8 +1,10 @@
 langchain
 langgraph
-langchain-ollama
-langchain-community
-langchain-core
+langchain_chroma
+langchain_huggingface
+langchain_ollama
+langchain_community
+langchain_core
 chromadb
 tiktoken
 ollama

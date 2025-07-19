@@ -1,11 +1,6 @@
 from unstructured.partition.html import partition_html
-
-from langchain_ollama import OllamaEmbeddings
-import os
 import uuid
-import chromadb
 from langchain_chroma import Chroma
-
 from paddleocr import FormulaRecognition
 from langchain_core.documents import Document
 import requests
@@ -27,12 +22,9 @@ embeddings = HuggingFaceEmbeddings(
     model_kwargs={'trust_remote_code': True}
     
 )
-# embeddings = OllamaEmbeddings(
-#     model="nomic-embed-text",
-# )
+
 chromadb_path = "./db" # CONFIG YOUR PATH
-# chroma_client = chromadb.PersistentClient(path=chromadb_path)
-# collection = chroma_client.get_or_create_collection(name="rag")
+
 vector_store = Chroma(
     #client=chroma_client,
     collection_name="rag",
@@ -54,7 +46,7 @@ def get_description(table):
         messages=[{
             'role': 'user',
             'content': f"""
-                    forneça uma descrição simples e precisa da tabela a seguir em até 450 caracteres, não forneça mais nada, apenas a descrição
+                    forneça uma descrição simples e precisa da tabela a seguir em até 500 caracteres, não forneça mais nada, apenas a descrição
 
                     tabela:
                     {table} 
@@ -128,13 +120,12 @@ def custom_split_by_hierarchy(full_text: str,
     for el in full_text:
         
         if "Table" in str(type(el)):
-            #tab = pyhtml2md.convert(el.metadata.text_as_html)
-            #tab = markdownify.markdownify(el.metadata.text_as_html, heading_style="ATX")
+            
             t = aux + tables[cont_table] + "\n"
             
             desc = get_description(t)
             splitter = RecursiveCharacterTextSplitter(
-                chunk_size=8000,
+                chunk_size=2000,
                 chunk_overlap=0,  
                 length_function=len,
             )
