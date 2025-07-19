@@ -5,9 +5,18 @@ from langchain_ollama import ChatOllama
 llm = ChatOllama(model="llama3.1", temperature=0.5)
 from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain_ollama import OllamaEmbeddings
+from langchain.embeddings import HuggingFaceEmbeddings
 
-embeddings = OllamaEmbeddings(
-    model="nomic-embed-text",
+# embeddings = OllamaEmbeddings(
+#     model="nomic-embed-text",
+# )
+model_name = "Alibaba-NLP/gte-multilingual-base"
+
+embeddings = HuggingFaceEmbeddings(
+    model_name=model_name, 
+   
+    model_kwargs={'trust_remote_code': True}
+    
 )
 from langchain_core.vectorstores import InMemoryVectorStore
 
@@ -39,12 +48,13 @@ logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
 # collection = chroma_client.get_or_create_collection(name="rag")
 
 chromadb_path = "./db" # CONFIG YOUR PATH
-chroma_client = chromadb.PersistentClient(path=chromadb_path)
-collection = chroma_client.get_or_create_collection(name="rag")
+#chroma_client = chromadb.PersistentClient(path=chromadb_path)
+#collection = chroma_client.get_or_create_collection(name="rag")
 vector_store = Chroma(
-    client=chroma_client,
+    #client=chroma_client,
     collection_name="rag",
     embedding_function=embeddings,
+    persist_directory=chromadb_path
 )
 class LineListOutputParser(BaseOutputParser[List[str]]):
     """Output parser for a list of lines."""
@@ -202,6 +212,7 @@ for step in graph.stream(
 
 input_message = "Quais sao as possiveis modalidades de ensino?"
 
+
 for step in graph.stream(
     {"messages": [{"role": "user", "content": input_message}]},
     stream_mode="values",
@@ -210,7 +221,5 @@ for step in graph.stream(
     md = Markdown(step["messages"][-1].content)
     console.print(md)
     console.print("--" * 20)
-    #step["messages"][-1].pretty_print()
-
-
-import markdown
+    #step["messages"][-1].pretty_print(
+        

@@ -17,17 +17,27 @@ import ollama
 import re
 from typing import List, Tuple, Dict
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain.embeddings import HuggingFaceEmbeddings
 
-embeddings = OllamaEmbeddings(
-    model="nomic-embed-text",
+model_name = "Alibaba-NLP/gte-multilingual-base"
+
+embeddings = HuggingFaceEmbeddings(
+    model_name=model_name, 
+   
+    model_kwargs={'trust_remote_code': True}
+    
 )
+# embeddings = OllamaEmbeddings(
+#     model="nomic-embed-text",
+# )
 chromadb_path = "./db" # CONFIG YOUR PATH
-chroma_client = chromadb.PersistentClient(path=chromadb_path)
-collection = chroma_client.get_or_create_collection(name="rag")
+# chroma_client = chromadb.PersistentClient(path=chromadb_path)
+# collection = chroma_client.get_or_create_collection(name="rag")
 vector_store = Chroma(
-    client=chroma_client,
+    #client=chroma_client,
     collection_name="rag",
     embedding_function=embeddings,
+    persist_directory=chromadb_path
 )
 
 
@@ -124,7 +134,7 @@ def custom_split_by_hierarchy(full_text: str,
             
             desc = get_description(t)
             splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000,
+                chunk_size=8000,
                 chunk_overlap=0,  
                 length_function=len,
             )
@@ -248,7 +258,7 @@ def get_table_text(table):
         
         frases += frase + "\n"
 
-    print(frases)
+    
     return frases
 
 def get_document(doc):
@@ -318,8 +328,8 @@ def run():
         documents.extend(chunks)
         metadatas.extend(meta)
 
-    for i, doc in enumerate(documents):
-        print(f"Chunk {i+1}/{len(documents)}: {doc}")
+    # for i, doc in enumerate(documents):
+    #     print(f"Chunk {i+1}/{len(documents)}: {doc}")
     insert_data(documents, metadatas)
     
 if __name__ == "__main__":
