@@ -85,8 +85,7 @@ def maybe_split(long_text: str,
                     {"capitulo": capitulo, "secao": secao, "artigo": artigo, "fonte": nome, "fonte_url": url   }))
     return out
     
-import pyhtml2md
-import markdownify
+
 def custom_split_by_hierarchy(full_text: str,
                               nome: str,
                               url: str,

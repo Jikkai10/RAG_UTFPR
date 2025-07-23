@@ -51,7 +51,7 @@ QUERY_PROMPT = PromptTemplate(
     template="""Você é um assistente baseado em um modelo de linguagem de IA.
     Sua tarefa é gerar três versões diferentes da pergunta feita pelo usuário para recuperar documentos relevantes de um banco de dados vetorial.
     Ao gerar múltiplas perspectivas da pergunta original, seu objetivo é ajudar o usuário a superar algumas das limitações da busca por similaridade baseada em distância.
-    Forneça essas perguntas alternativas separadas por quebras de linha. Retorne apenas as perguntas, sem explicações adicionais.
+    Forneça essas perguntas alternativas separadas por quebras de linha. Retorne apenas as perguntas, sem explicações adicionais ou coisas como 'aqui estão as perguntas'.
     Pergunta original: {question}""",
 )
 
@@ -113,7 +113,7 @@ def generate(state: MessagesState):
 
     docs_content = "\n\n".join(doc.content for doc in tool_messages)
     system_message_content = (
-        """Você é um assistente de IA que responde as dúvidas dos usuários com bases nos documentos a baixo.
+        """Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da UTFPR.
         Os documentos abaixo apresentam as fontes atualizadas e devem ser consideradas como verdade.
         Cite a fonte quando fornecer a informação, nunca altere o link. Se não souber a resposta ou não haver documentos, diga que não sabe.
         Sempre escreva no formato markdown
@@ -167,28 +167,51 @@ input_message = "qual o prazo máximo de entrega para o relatório parcial de es
 from rich.console import Console
 from rich.markdown import Markdown
 console = Console()
+import gradio as gr
+import uuid
+def responder(mensagem, chat_history, session_id):
+    config = {"configurable": {"thread_id": session_id}}
+    
+    result = graph.invoke(
+        {"messages": [{"role": "user", "content": mensagem}]},
+        stream_mode="values",
+        config=config,
+    )
 
-for step in graph.stream(
-    {"messages": [{"role": "user", "content": input_message}]},
-    stream_mode="values",
-    config=config,
-):
-
-    md = Markdown(step["messages"][-1].content)
-    console.print(md)
-    console.print("--" * 20)
-    #step["messages"][-1].pretty_print()
-
-input_message = "Quais sao as possiveis modalidades de ensino?"
+    resposta = result["messages"][-1].content
+    return resposta
+    
 
 
-for step in graph.stream(
-    {"messages": [{"role": "user", "content": input_message}]},
-    stream_mode="values",
-    config=config,
-):
-    md = Markdown(step["messages"][-1].content)
-    console.print(md)
-    console.print("--" * 20)
-    #step["messages"][-1].pretty_print(
+with gr.Blocks() as interface:
+    session_id_state = gr.State(str(uuid.uuid4()))  # gera um session_id aleatório
+
+    gr.Markdown("# 🤖 Chat RAG")
+
+    gr.ChatInterface(
+        responder,
+        type="messages",
+        chatbot=gr.Chatbot(height="60vh"),
+        additional_inputs=[
+            session_id_state
+        ],
+    )
+
+
+interface.launch()
+
+
+
+# input_message = "Quais sao as possiveis modalidades de ensino?"
+
+
+# for step in graph.stream(
+#     {"messages": [{"role": "user", "content": input_message}]},
+#     stream_mode="values",
+#     config=config,
+# ):
+#     md = Markdown(step["messages"][-1].content)
+#     console.print(md)
+#     console.print("--" * 20)
+
         
