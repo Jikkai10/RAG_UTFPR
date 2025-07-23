@@ -54,7 +54,6 @@ def get_description(table):
             
         }]
     )
-    #print(response['message']['content'])
     
     return response['message']['content']
 
@@ -180,7 +179,6 @@ def custom_split_by_hierarchy(full_text: str,
             if art_number:
                 buff_art_lines.append(el.text)
     
-    # Final do arquivo: descarrega o último artigo
     flush_article()
     return chunks, metadatas
 
@@ -266,7 +264,6 @@ def get_document(doc):
         frases.append(get_table_text(table))
         
     elements = partition_html(
-        #url=doc["url"],
         text=resq.text,
         extract_image_block_types=["Image"],
         extract_image_block_to_payload=True,
@@ -292,19 +289,9 @@ def insert_data(documents, metadatas):
     )
     print(f"Data successfully entered! {len(documents)} Chunks")
 
-docs =[
-    {
-        "name": "RODP",
-        "url": "https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=1033898&id_orgao_publicacao=0",
-    },
-    {   
-        "name": "SEI",
-        "url": "https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=1608522&id_orgao_publicacao=0",
-    },
-    
-]
 
-def run():
+
+def run(docs):
     print("Running prep docs...")
 
     documents = []
@@ -318,9 +305,18 @@ def run():
         documents.extend(chunks)
         metadatas.extend(meta)
 
-    # for i, doc in enumerate(documents):
-    #     print(f"Chunk {i+1}/{len(documents)}: {doc}")
     insert_data(documents, metadatas)
     
 if __name__ == "__main__":
-    run()
+    docs =[
+        {
+            "name": "RODP",
+            "url": "https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=1033898&id_orgao_publicacao=0",
+        },
+        {   
+            "name": "SEI",
+            "url": "https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=1608522&id_orgao_publicacao=0",
+        },
+    
+    ]
+    run(docs)

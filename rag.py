@@ -15,9 +15,11 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 import logging
+import gradio as gr
+import uuid
 
-logging.basicConfig()
-logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
+# logging.basicConfig()
+# logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
 
 
 llm = ChatOllama(model="llama3.1", temperature=0.5)
@@ -164,11 +166,8 @@ graph = graph_builder.compile(checkpointer=memory)
 config = {"configurable": {"thread_id": "abc123"}}
 
 input_message = "qual o prazo máximo de entrega para o relatório parcial de estágio?"
-from rich.console import Console
-from rich.markdown import Markdown
-console = Console()
-import gradio as gr
-import uuid
+
+
 def responder(mensagem, chat_history, session_id):
     config = {"configurable": {"thread_id": session_id}}
     

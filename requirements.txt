@@ -8,4 +8,4 @@ langchain_core
 chromadb
 tiktoken
 ollama
-rich
+gradio
