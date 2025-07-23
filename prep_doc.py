@@ -12,7 +12,7 @@ import ollama
 import re
 from typing import List, Tuple, Dict
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 model_name = "Alibaba-NLP/gte-multilingual-base"
 
@@ -150,7 +150,8 @@ def custom_split_by_hierarchy(full_text: str,
             output = model.predict(input=img, batch_size=1)
             text = ""
             for res in output:
-                text += res['rec_formula'] + "\n"
+                text += res['rec_formula']
+            text = "$$"+text+"$$ \n"
             buff_art_lines.append(text)
             aux = ""
             continue

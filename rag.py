@@ -90,7 +90,7 @@ def retrieve(query: str):
     )
 
     return serialized, retrieved_docs
-    #return documents_str, relevant_documents
+    
 
 def query_or_respond(state: MessagesState):
     """Generate tool call retrieve or respond."""
@@ -198,19 +198,4 @@ with gr.Blocks() as interface:
 
 
 interface.launch()
-
-
-
-# input_message = "Quais sao as possiveis modalidades de ensino?"
-
-
-# for step in graph.stream(
-#     {"messages": [{"role": "user", "content": input_message}]},
-#     stream_mode="values",
-#     config=config,
-# ):
-#     md = Markdown(step["messages"][-1].content)
-#     console.print(md)
-#     console.print("--" * 20)
-
         
