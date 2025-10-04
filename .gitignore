@@ -1,5 +1,6 @@
 *.toml
 *.lock
+*.pdf
 .venv/
 .python-version
 db/

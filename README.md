@@ -4,6 +4,7 @@ Contrução de um chatbot com LLM que utiliza RAG para obter informações dos d
 
 ### Requerimentos:
 
+    sudo apt-get install poppler-utils libmagic-dev tesseract-ocr tesseract-ocr-por
     pip install -r requirements.txt
 
 ### Ollama:

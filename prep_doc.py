@@ -1,4 +1,5 @@
 from unstructured.partition.html import partition_html
+from unstructured.partition.pdf import partition_pdf
 import uuid
 from langchain_chroma import Chroma
 from paddlex import create_model
@@ -119,25 +120,31 @@ def custom_split_by_hierarchy(full_text: str,
         
         if "Table" in str(type(el)):
             
-            t = aux + tables[cont_table] + "\n"
-            
+            if tables is None or cont_table >= len(tables):
+                table = get_table_text(el.metadata.text_as_html)
+            else:
+                table = tables[cont_table]
+            if table is None:
+                continue
+            t = aux + table + "\n"
+
             desc = get_description(t)
-            splitter = RecursiveCharacterTextSplitter(
-                chunk_size=2000,
-                chunk_overlap=0,  
-                length_function=len,
-            )
-            texts = splitter.split_text(tables[cont_table])
+            # splitter = RecursiveCharacterTextSplitter(
+            #     chunk_size=2000,
+            #     chunk_overlap=0,  
+            #     length_function=len,
+            # )
+            # texts = splitter.split_text(tables[cont_table])
             
             cont_table += 1
-            for text in texts:
-                text_tab = aux + "\n" + desc + "\n" + text.strip()
-                if current_sec == "—":
-                    header = f"Capítulo {current_cap}\n\n"
-                else:
-                    header = f"Capítulo {current_cap}\nSeção {current_sec}\n\n"
-                chunks.append(header + text_tab.strip())
-                metadatas.append({"capitulo": current_cap, "secao": current_sec, "artigo": "-", "fonte": nome, "fonte_url": url})
+            #for text in texts:
+            text_tab = aux + "\n" + desc + "\n" + table
+            if current_sec == "—":
+                header = f"Capítulo {current_cap}\n\n"
+            else:
+                header = f"Capítulo {current_cap}\nSeção {current_sec}\n\n"
+            chunks.append(header + text_tab.strip())
+            metadatas.append({"capitulo": current_cap, "secao": current_sec, "artigo": "-", "fonte": nome, "fonte_url": url})
             aux = ""
             continue
         
@@ -196,7 +203,7 @@ def is_table_empty(table):
 def get_table_text(table):
     soup = BeautifulSoup(table, "html.parser")
     rows = soup.find_all("tr")
-    headers = [th.get_text(strip=True) for th in rows[0].find_all("td")]
+    headers = [th.get_text(strip=True) for th in rows[0].find_all(['td', 'th'])]
     data_rows = rows[1:]
 
     # Armazena valores ativos de rowspan
@@ -274,7 +281,22 @@ def get_document(doc):
 
     return custom_split_by_hierarchy(elements, doc["name"], doc["url"], frases)
 
+def get_pdf_document(doc):
+    """
+        inferencia de tabelas pode sair com erros
+    """
+    elements = partition_pdf(
+        filename=doc["filepath"],
+        strategy="hi_res",
+        languages=["por"],
+        extract_images_in_pdf=True,
+        include_page_breaks=False,
+        infer_table_structure=True,
+        extract_image_block_types=["Image", "Table"],
+        extract_image_block_to_payload=True,
+    )
 
+    return custom_split_by_hierarchy(elements, doc["name"], doc["url"])
 
 def insert_data(documents, metadatas):
 
@@ -293,7 +315,7 @@ def insert_data(documents, metadatas):
 
 
 
-def run(docs):
+def run(docs, mode=1):
     print("Running prep docs...")
 
     documents = []
@@ -301,9 +323,11 @@ def run(docs):
 
     for i, doc in enumerate(docs):
         print(f"Processing {i+1}/{len(docs)}: {doc['name']}")
-        
-        chunks, meta = get_document(doc)
-        
+        if mode == 1:
+            chunks, meta = get_document(doc)
+        else:
+            chunks, meta = get_pdf_document(doc)
+
         documents.extend(chunks)
         metadatas.extend(meta)
 
@@ -325,5 +349,13 @@ if __name__ == "__main__":
             "url": "https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=3171226&id_orgao_publicacao=0",
         },
     
+    ]
+    
+    docs2=[
+        {   
+            "name": "REGULAMENTO DOS ESTÁGIOS CURRICULARES SUPERVISIONADOS",
+            "url": "https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=1608522&id_orgao_publicacao=0",
+            "filepath": "ESTAGIO_UTFPR.pdf"
+        },
     ]
     run(docs)

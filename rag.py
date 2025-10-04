@@ -38,31 +38,32 @@ vector_store = Chroma(
     embedding_function=embeddings,
     persist_directory=chromadb_path
 )
-class LineListOutputParser(BaseOutputParser[List[str]]):
-    """Output parser for a list of lines."""
+# class LineListOutputParser(BaseOutputParser[List[str]]):
+#     """Output parser for a list of lines."""
 
-    def parse(self, text: str) -> List[str]:
-        lines = text.strip().split("\n")
-        return list(filter(None, lines))  # Remove empty lines
-
-
-output_parser = LineListOutputParser()
-
-QUERY_PROMPT = PromptTemplate(
-    input_variables=["question"],
-    template="""Você é um assistente baseado em um modelo de linguagem de IA.
-    Sua tarefa é gerar três versões diferentes da pergunta feita pelo usuário para recuperar documentos relevantes de um banco de dados vetorial.
-    Ao gerar múltiplas perspectivas da pergunta original, seu objetivo é ajudar o usuário a superar algumas das limitações da busca por similaridade baseada em distância.
-    Forneça essas perguntas alternativas separadas por quebras de linha. Retorne apenas as perguntas, sem explicações adicionais ou coisas como 'aqui estão as perguntas'.
-    Pergunta original: {question}""",
-)
+#     def parse(self, text: str) -> List[str]:
+#         lines = text.strip().split("\n")
+#         return list(filter(None, lines))  # Remove empty lines
 
 
-llm_retriever = ChatOllama(model="llama3.1", temperature=0)
-llm_chain = QUERY_PROMPT | llm_retriever | output_parser
-retriever = MultiQueryRetriever(
-    retriever=vector_store.as_retriever(), llm_chain=llm_chain, parser_key="lines", include_original=True
-)
+# output_parser = LineListOutputParser()
+
+# QUERY_PROMPT = PromptTemplate(
+#     input_variables=["question"],
+#     template="""Você é um assistente baseado em um modelo de linguagem de IA.
+#     Sua tarefa é gerar três versões diferentes da pergunta feita pelo usuário para recuperar documentos relevantes de um banco de dados vetorial.
+#     Ao gerar múltiplas perspectivas da pergunta original, seu objetivo é ajudar o usuário a superar algumas das limitações da busca por similaridade baseada em distância.
+#     Forneça essas perguntas alternativas separadas por quebras de linha. Retorne apenas as perguntas, sem explicações adicionais ou coisas como 'aqui estão as perguntas'.
+#     Pergunta original: {question}""",
+# )
+
+
+# llm_retriever = ChatOllama(model="llama3.1", temperature=0)
+# llm_chain = QUERY_PROMPT | llm_retriever | output_parser
+# retriever = MultiQueryRetriever(
+#     retriever=vector_store.as_retriever(), llm_chain=llm_chain, parser_key="lines", include_original=True
+# )
+retriever = vector_store.as_retriever(search_kwargs={"k": 20})
 model = HuggingFaceCrossEncoder(model_name="BAAI/bge-reranker-base")
 compressor = CrossEncoderReranker(model=model, top_n=5)
 compression_retriever = ContextualCompressionRetriever(
@@ -72,11 +73,11 @@ compression_retriever = ContextualCompressionRetriever(
 
 
 graph_builder = StateGraph(MessagesState)
-def get_embedding(text):
+# def get_embedding(text):
 
-    embedding = embeddings.embed_query(text)
+#     embedding = embeddings.embed_query(text)
 
-    return embedding
+#     return embedding
 
 @tool(response_format="content_and_artifact")
 def retrieve(query: str):
