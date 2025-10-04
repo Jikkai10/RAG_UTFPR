@@ -11,5 +11,6 @@ gradio
 sentence-transformers
 paddlex[ocr]
 unstructured[pdf]
+fastapi[standard]
 --index-url https://www.paddlepaddle.org.cn/packages/stable/cpu/
 paddlepaddle

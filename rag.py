@@ -15,8 +15,13 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 import logging
+from fastapi import FastAPI, Request
+from pydantic import BaseModel
 import gradio as gr
 import uuid
+
+import uvicorn
+
 
 # logging.basicConfig()
 # logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
@@ -168,20 +173,30 @@ config = {"configurable": {"thread_id": "abc123"}}
 
 input_message = "qual o prazo máximo de entrega para o relatório parcial de estágio?"
 
+api = FastAPI()
 
-def responder(mensagem, chat_history, session_id):
+class MessageRequest(BaseModel):
+    message: str
+    chat_history: List[dict] = []
+    session_id: str
+
+
+def responder(message, chat_history, session_id):
     config = {"configurable": {"thread_id": session_id}}
-    
+
     result = graph.invoke(
-        {"messages": [{"role": "user", "content": mensagem}]},
+        {"messages": [{"role": "user", "content": message}]},
         stream_mode="values",
         config=config,
     )
 
     resposta = result["messages"][-1].content
     return resposta
-    
 
+@api.post("/rag")
+def responder_api(request: MessageRequest):
+    response = responder(request.message, request.chat_history, request.session_id)
+    return response
 
 with gr.Blocks() as interface:
     session_id_state = gr.State(str(uuid.uuid4()))  # gera um session_id aleatório
@@ -198,5 +213,13 @@ with gr.Blocks() as interface:
     )
 
 
-interface.launch()
+#interface.launch()
+
+api = gr.mount_gradio_app(api, interface, path="/chat")
+
+if __name__ == "__main__":
+    uvicorn.run(api, host="0.0.0.0", port=8000)
+
+
+
         
