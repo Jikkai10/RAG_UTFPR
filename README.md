@@ -1,6 +1,6 @@
 # RAG para documentos da UTFPR 
 
-Contrução de um chatbot com LLM que utiliza RAG para obter informações dos documentos oficiais da UTFPR
+Construção de um chatbot com LLM que utiliza RAG para obter informações dos documentos oficiais da UTFPR
 
 ### Requerimentos:
 
@@ -11,7 +11,7 @@ Contrução de um chatbot com LLM que utiliza RAG para obter informações dos d
 
     curl -fsSL https://ollama.com/install.sh | sh
 
-#### models:
+#### Modelo:
 
     ollama pull llama3.1
 
