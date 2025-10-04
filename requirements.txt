@@ -6,6 +6,10 @@ langchain_ollama
 langchain_community
 langchain_core
 chromadb
-tiktoken
 ollama
 gradio
+sentence-transformers
+paddlex[ocr]
+unstructured[pdf]
+--index-url https://www.paddlepaddle.org.cn/packages/stable/cpu/
+paddlepaddle

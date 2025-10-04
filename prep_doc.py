@@ -1,7 +1,7 @@
 from unstructured.partition.html import partition_html
 import uuid
 from langchain_chroma import Chroma
-from paddleocr import FormulaRecognition
+from paddlex import create_model
 from langchain_core.documents import Document
 import requests
 from bs4 import BeautifulSoup
@@ -33,7 +33,7 @@ vector_store = Chroma(
 )
 
 
-model = FormulaRecognition(model_name="PP-FormulaNet_plus-M")
+model = create_model("PP-FormulaNet_plus-M")
 
 CAP_RE   = re.compile(r"^\s*Cap[ií]tulo\s+([IVXLCDM]+)\b.*",  re.IGNORECASE)
 SEC_RE   = re.compile(r"^\s*Se[cç][ãa]o\s+([IVXLCDM]+)\b.*", re.IGNORECASE)
@@ -152,6 +152,7 @@ def custom_split_by_hierarchy(full_text: str,
             for res in output:
                 text += res['rec_formula']
             text = "$$"+text+"$$ \n"
+            
             buff_art_lines.append(text)
             aux = ""
             continue
@@ -311,12 +312,17 @@ def run(docs):
 if __name__ == "__main__":
     docs =[
         {
-            "name": "RODP",
+            "name": "REGULAMENTO DA ORGANIZAÇÃO DIDÁTICO-PEDAGÓGICA",
             "url": "https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=1033898&id_orgao_publicacao=0",
         },
         {   
-            "name": "SEI",
+            "name": "REGULAMENTO DOS ESTÁGIOS CURRICULARES SUPERVISIONADOS",
             "url": "https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=1608522&id_orgao_publicacao=0",
+        },
+        
+        {   
+            "name": "REGULAMENTO DE TRABALHO DE CONCLUSÃO DE CURSO",
+            "url": "https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=3171226&id_orgao_publicacao=0",
         },
     
     ]
