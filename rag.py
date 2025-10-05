@@ -8,19 +8,11 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph import END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_chroma import Chroma
-from langchain_core.output_parsers import BaseOutputParser
-from langchain_core.prompts import PromptTemplate
-from typing import List
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 import logging
-from fastapi import FastAPI, Request
-from pydantic import BaseModel
-import gradio as gr
-import uuid
 
-import uvicorn
 
 
 # logging.basicConfig()
@@ -32,7 +24,6 @@ model_name = "Alibaba-NLP/gte-multilingual-base"
 
 embeddings = HuggingFaceEmbeddings(
     model_name=model_name, 
-   
     model_kwargs={'trust_remote_code': True}
     
 )
@@ -173,15 +164,8 @@ config = {"configurable": {"thread_id": "abc123"}}
 
 input_message = "qual o prazo máximo de entrega para o relatório parcial de estágio?"
 
-api = FastAPI()
 
-class MessageRequest(BaseModel):
-    message: str
-    chat_history: List[dict] = []
-    session_id: str
-
-
-def responder(message, chat_history, session_id):
+def answer(message, chat_history, session_id):
     config = {"configurable": {"thread_id": session_id}}
 
     result = graph.invoke(
@@ -189,36 +173,22 @@ def responder(message, chat_history, session_id):
         stream_mode="values",
         config=config,
     )
+    print(result["messages"][result["messages"].__len__()-2])
+    result_answer = result["messages"][-1].content
+    return result_answer
 
-    resposta = result["messages"][-1].content
-    return resposta
+def full_answer(message, chat_history, session_id):
+    config = {"configurable": {"thread_id": session_id}}
 
-@api.post("/rag")
-def responder_api(request: MessageRequest):
-    response = responder(request.message, request.chat_history, request.session_id)
-    return response
-
-with gr.Blocks() as interface:
-    session_id_state = gr.State(str(uuid.uuid4()))  # gera um session_id aleatório
-
-    gr.Markdown("# 🤖 Chat RAG")
-
-    gr.ChatInterface(
-        responder,
-        type="messages",
-        chatbot=gr.Chatbot(height="60vh"),
-        additional_inputs=[
-            session_id_state
-        ],
+    result = graph.invoke(
+        {"messages": [{"role": "user", "content": message}]},
+        stream_mode="values",
+        config=config,
     )
+    
+    result_answer = result["messages"]
+    return result_answer
 
-
-#interface.launch()
-
-api = gr.mount_gradio_app(api, interface, path="/chat")
-
-if __name__ == "__main__":
-    uvicorn.run(api, host="0.0.0.0", port=8000)
 
 
 

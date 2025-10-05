@@ -12,5 +12,8 @@ sentence-transformers
 paddlex[ocr]
 unstructured[pdf]
 fastapi[standard]
+ragas
+datasets
+uvicorn
 --index-url https://www.paddlepaddle.org.cn/packages/stable/cpu/
 paddlepaddle
