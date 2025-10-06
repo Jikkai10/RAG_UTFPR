@@ -34,17 +34,6 @@ services:
       - chroma_data:/chroma/chroma
     environment:
       - ALLOW_RESET=true
-      
-  rag_preprocess:
-    build: .
-    container_name: rag_preprocess
-    depends_on:
-      - ollama
-      - chromadb
-    environment:
-      - OLLAMA_URL=http://ollama:11434
-      - CHROMA_URL=http://chromadb:8000
-    command: python prep_doc.py
 
   rag_api:
     build: .

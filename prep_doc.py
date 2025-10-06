@@ -16,6 +16,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 import os
 from chromadb import HttpClient
+import chromadb
 from ollama import Client
 
 
@@ -23,9 +24,19 @@ ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
 client_ollama = Client(host=ollama_url)
 
 chroma_url = os.getenv("CHROMA_URL", "http://localhost:8000")
-host = chroma_url.replace("http://", "").split(":")[0]
-port = int(chroma_url.split(":")[-1])
-client_chroma = HttpClient(host=host,port=port)
+def get_chroma_client(host="http://localhost:8000"):
+    try:
+        # Verifica se o servidor está respondendo
+        response = requests.get(f"{host}/api/v1/heartbeat", timeout=2)
+        if response.status_code == 200:
+            return chromadb.HttpClient(host=host)
+    except requests.exceptions.RequestException:
+        pass
+
+    
+    return chromadb.Client()
+
+client_chroma = get_chroma_client(chroma_url)
 
 model_name = "Alibaba-NLP/gte-multilingual-base"
 embeddings = HuggingFaceEmbeddings(
@@ -38,7 +49,7 @@ embeddings = HuggingFaceEmbeddings(
 chromadb_path = "./db" # CONFIG YOUR PATH
 
 vector_store = Chroma(
-    client=client_chroma,
+    #client=client_chroma,
     collection_name="rag",
     embedding_function=embeddings,
     persist_directory=chromadb_path

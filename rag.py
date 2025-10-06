@@ -14,6 +14,8 @@ from langchain.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 import logging
 import os
+import chromadb
+import requests
 
 
 # logging.basicConfig()
@@ -24,7 +26,19 @@ ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
 chroma_url = os.getenv("CHROMA_URL", "http://localhost:8000")
 host = chroma_url.replace("http://", "").split(":")[0]
 port = int(chroma_url.split(":")[-1])
-client_chroma = HttpClient(host=host,port=port)
+def get_chroma_client(host="http://localhost:8000"):
+    try:
+        # Verifica se o servidor está respondendo
+        response = requests.get(f"{host}/api/v1/heartbeat", timeout=2)
+        if response.status_code == 200:
+            return chromadb.HttpClient(host=host)
+    except requests.exceptions.RequestException:
+        pass
+
+    
+    return chromadb.Client()
+
+client_chroma = get_chroma_client(chroma_url)
 
 llm = ChatOllama(model="llama3.1", temperature=0.5, base_url=ollama_url)
 model_name = "Alibaba-NLP/gte-multilingual-base"
