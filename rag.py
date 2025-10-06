@@ -1,3 +1,4 @@
+from chromadb import HttpClient
 from langchain_ollama import ChatOllama
 from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -12,14 +13,20 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 import logging
-
+import os
 
 
 # logging.basicConfig()
 # logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
+ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
 
-llm = ChatOllama(model="llama3.1", temperature=0.5)
+chroma_url = os.getenv("CHROMA_URL", "http://localhost:8000")
+host = chroma_url.replace("http://", "").split(":")[0]
+port = int(chroma_url.split(":")[-1])
+client_chroma = HttpClient(host=host,port=port)
+
+llm = ChatOllama(model="llama3.1", temperature=0.5, base_url=ollama_url)
 model_name = "Alibaba-NLP/gte-multilingual-base"
 
 embeddings = HuggingFaceEmbeddings(
@@ -29,7 +36,7 @@ embeddings = HuggingFaceEmbeddings(
 )
 chromadb_path = "./db" # CONFIG YOUR PATH
 vector_store = Chroma(
-    #client=chroma_client,
+    client=client_chroma,
     collection_name="rag",
     embedding_function=embeddings,
     persist_directory=chromadb_path

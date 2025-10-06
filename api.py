@@ -11,9 +11,9 @@ class MessageRequest(BaseModel):
     message: str
     chat_history: List[dict] = []
     session_id: str
-api = FastAPI()
+app = FastAPI()
 
-@api.post("/rag")
+@app.post("/rag")
 def answer_api(request: MessageRequest):
     response = rag.answer(request.message, request.chat_history, request.session_id)
     return response
@@ -32,7 +32,4 @@ with gr.Blocks() as interface:
         ],
     )
 
-api = gr.mount_gradio_app(api, interface, path="/chat")
-
-if __name__ == "__main__":
-    uvicorn.run(api, host="0.0.0.0", port=8000)
+app = gr.mount_gradio_app(app, interface, path="/chat")

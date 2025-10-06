@@ -1,0 +1,66 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=true
+    entrypoint: >
+      bash -c "
+        ollama serve & 
+        sleep 5 && 
+        ollama pull llama3.1 && 
+        wait
+      "
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - ALLOW_RESET=true
+      
+  rag_preprocess:
+    build: .
+    container_name: rag_preprocess
+    depends_on:
+      - ollama
+      - chromadb
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - CHROMA_URL=http://chromadb:8000
+    command: python prep_doc.py
+
+  rag_api:
+    build: .
+    container_name: rag_api
+    restart: unless-stopped
+    depends_on:
+      - chromadb
+      - ollama
+      - rag_preprocess
+    ports:
+      - "8080:8080"
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - CHROMA_URL=http://chromadb:8000
+    command: uvicorn api:app --host 0.0.0.0 --port 8080
+
+volumes:
+  ollama_data:
+  chroma_data:

@@ -14,6 +14,6 @@ Construção de um chatbot com LLM que utiliza RAG para obter informações dos 
 #### Modelo:
 
     ollama pull llama3.1
-
+docker exec -it ollama ollama pull llama3.1
 
 mais informações: https://ollama.com

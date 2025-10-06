@@ -15,5 +15,3 @@ fastapi[standard]
 ragas
 datasets
 uvicorn
---index-url https://www.paddlepaddle.org.cn/packages/stable/cpu/
-paddlepaddle
