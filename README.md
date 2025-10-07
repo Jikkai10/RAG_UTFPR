@@ -31,6 +31,14 @@ Localmente rode:
 
     uvicorn api:app --host 0.0.0.0 --port 8080
 
+*inicialmente a base de embeddings está vazia, antes de usar o chat deve popular 
+
+No arquivo "prep_doc.py" tem alguns documentos de exemplo que podem ser usados via api caso esteja usando via Docker
+
+Se estiver rodando localmente, basta rodar:
+
+    python prep_doc.py
+
 ## API:
 
 - /rag: tipo post, retorna a resposta gerada, recebe 3 entradas:
