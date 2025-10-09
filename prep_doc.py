@@ -46,10 +46,10 @@ embeddings = HuggingFaceEmbeddings(
     
 )
 
-chromadb_path = "./db" # CONFIG YOUR PATH
+chromadb_path = "./data" # CONFIG YOUR PATH
 
 vector_store = Chroma(
-    #client=client_chroma,
+    client=client_chroma,
     collection_name="rag",
     embedding_function=embeddings,
     persist_directory=chromadb_path

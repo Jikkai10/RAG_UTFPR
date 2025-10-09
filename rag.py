@@ -24,8 +24,6 @@ ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
 
 chroma_url = os.getenv("CHROMA_URL", "http://localhost:8000")
-host = chroma_url.replace("http://", "").split(":")[0]
-port = int(chroma_url.split(":")[-1])
 def get_chroma_client(host="http://localhost:8000"):
     try:
         # Verifica se o servidor está respondendo
@@ -48,7 +46,7 @@ embeddings = HuggingFaceEmbeddings(
     model_kwargs={'trust_remote_code': True}
     
 )
-chromadb_path = "./db" # CONFIG YOUR PATH
+chromadb_path = "./data" # CONFIG YOUR PATH
 vector_store = Chroma(
     client=client_chroma,
     collection_name="rag",
