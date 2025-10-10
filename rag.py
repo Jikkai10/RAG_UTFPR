@@ -53,6 +53,8 @@ vector_store = Chroma(
     embedding_function=embeddings,
     persist_directory=chromadb_path
 )
+
+"""comentado a possibilidade de criação de perguntas derivadas da original"""
 # class LineListOutputParser(BaseOutputParser[List[str]]):
 #     """Output parser for a list of lines."""
 
@@ -78,6 +80,8 @@ vector_store = Chroma(
 # retriever = MultiQueryRetriever(
 #     retriever=vector_store.as_retriever(), llm_chain=llm_chain, parser_key="lines", include_original=True
 # )
+
+"""criação do mecanismo de busca, com reranking"""
 retriever = vector_store.as_retriever(search_kwargs={"k": 20})
 model = HuggingFaceCrossEncoder(model_name="BAAI/bge-reranker-base")
 compressor = CrossEncoderReranker(model=model, top_n=5)
@@ -88,15 +92,11 @@ compression_retriever = ContextualCompressionRetriever(
 
 
 graph_builder = StateGraph(MessagesState)
-# def get_embedding(text):
 
-#     embedding = embeddings.embed_query(text)
-
-#     return embedding
 
 @tool(response_format="content_and_artifact")
 def retrieve(query: str):
-    """Retrieve information related to a query."""
+    """Retorna as informações relacionadas com a consulta."""
     #retrieved_docs = vector_store.similarity_search(query, k=5)
     retrieved_docs = compression_retriever.invoke(query)
 
@@ -109,7 +109,7 @@ def retrieve(query: str):
     
 
 def query_or_respond(state: MessagesState):
-    """Generate tool call retrieve or respond."""
+    """Gera tool call retrieve or respond."""
     llm_with_tools = llm.bind_tools([retrieve])
     response = llm_with_tools.invoke(state["messages"])
 
@@ -118,7 +118,7 @@ def query_or_respond(state: MessagesState):
 tools = ToolNode([retrieve])
 
 def generate(state: MessagesState):
-    """Generate a answer."""
+    """Gera a resposta."""
 
     recent_tool_messages = []
     for message in reversed(state["messages"]):
@@ -155,6 +155,7 @@ def generate(state: MessagesState):
     response = llm.invoke(prompt)
     return {"messages": [response]}
 
+"""monta o grafo"""
 graph_builder.add_node(query_or_respond)
 graph_builder.add_node(tools)
 graph_builder.add_node(generate)

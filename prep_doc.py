@@ -373,11 +373,11 @@ if __name__ == "__main__":
     
     ]
     
-    docs2=[
-        {   
-            "name": "REGULAMENTO DOS ESTÁGIOS CURRICULARES SUPERVISIONADOS",
-            "url": "https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=1608522&id_orgao_publicacao=0",
-            "filepath": "ESTAGIO_UTFPR.pdf"
-        },
-    ]
+    # docs2=[
+    #     {   
+    #         "name": "REGULAMENTO DOS ESTÁGIOS CURRICULARES SUPERVISIONADOS",
+    #         "url": "https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=1608522&id_orgao_publicacao=0",
+    #         "filepath": "ESTAGIO_UTFPR.pdf"
+    #     },
+    # ]
     run(docs)
