@@ -20,194 +20,169 @@ import requests
 
 # logging.basicConfig()
 # logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
-ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
-
-
-chroma_url = os.getenv("CHROMA_URL", "http://localhost:8000")
-def get_chroma_client(host="http://localhost:8000"):
-    try:
-        # Verifica se o servidor está respondendo
-        response = requests.get(f"{host}/api/v1/heartbeat", timeout=2)
-        if response.status_code == 200:
-            return chromadb.HttpClient(host=host)
-    except requests.exceptions.RequestException:
-        pass
-
+class Rag:
     
-    return chromadb.Client()
+    def __init__(self, vector_store, llm):
+        
+        self.vector_store = vector_store
+        self.llm = llm
 
-client_chroma = get_chroma_client(chroma_url)
+        """comentado a possibilidade de criação de perguntas derivadas da original"""
+        # class LineListOutputParser(BaseOutputParser[List[str]]):
+        #     """Output parser for a list of lines."""
 
-llm = ChatOllama(model="llama3.1", temperature=0.5, base_url=ollama_url)
-model_name = "Alibaba-NLP/gte-multilingual-base"
-
-embeddings = HuggingFaceEmbeddings(
-    model_name=model_name, 
-    model_kwargs={'trust_remote_code': True}
-    
-)
-chromadb_path = "./data" # CONFIG YOUR PATH
-vector_store = Chroma(
-    client=client_chroma,
-    collection_name="rag",
-    embedding_function=embeddings,
-    persist_directory=chromadb_path
-)
-
-"""comentado a possibilidade de criação de perguntas derivadas da original"""
-# class LineListOutputParser(BaseOutputParser[List[str]]):
-#     """Output parser for a list of lines."""
-
-#     def parse(self, text: str) -> List[str]:
-#         lines = text.strip().split("\n")
-#         return list(filter(None, lines))  # Remove empty lines
+        #     def parse(self, text: str) -> List[str]:
+        #         lines = text.strip().split("\n")
+        #         return list(filter(None, lines))  # Remove empty lines
 
 
-# output_parser = LineListOutputParser()
+        # output_parser = LineListOutputParser()
 
-# QUERY_PROMPT = PromptTemplate(
-#     input_variables=["question"],
-#     template="""Você é um assistente baseado em um modelo de linguagem de IA.
-#     Sua tarefa é gerar três versões diferentes da pergunta feita pelo usuário para recuperar documentos relevantes de um banco de dados vetorial.
-#     Ao gerar múltiplas perspectivas da pergunta original, seu objetivo é ajudar o usuário a superar algumas das limitações da busca por similaridade baseada em distância.
-#     Forneça essas perguntas alternativas separadas por quebras de linha. Retorne apenas as perguntas, sem explicações adicionais ou coisas como 'aqui estão as perguntas'.
-#     Pergunta original: {question}""",
-# )
-
-
-# llm_retriever = ChatOllama(model="llama3.1", temperature=0)
-# llm_chain = QUERY_PROMPT | llm_retriever | output_parser
-# retriever = MultiQueryRetriever(
-#     retriever=vector_store.as_retriever(), llm_chain=llm_chain, parser_key="lines", include_original=True
-# )
-
-"""criação do mecanismo de busca, com reranking"""
-retriever = vector_store.as_retriever(search_kwargs={"k": 20})
-model = HuggingFaceCrossEncoder(model_name="BAAI/bge-reranker-base")
-compressor = CrossEncoderReranker(model=model, top_n=5)
-compression_retriever = ContextualCompressionRetriever(
-    base_compressor=compressor, base_retriever=retriever
-)
+        # QUERY_PROMPT = PromptTemplate(
+        #     input_variables=["question"],
+        #     template="""Você é um assistente baseado em um modelo de linguagem de IA.
+        #     Sua tarefa é gerar três versões diferentes da pergunta feita pelo usuário para recuperar documentos relevantes de um banco de dados vetorial.
+        #     Ao gerar múltiplas perspectivas da pergunta original, seu objetivo é ajudar o usuário a superar algumas das limitações da busca por similaridade baseada em distância.
+        #     Forneça essas perguntas alternativas separadas por quebras de linha. Retorne apenas as perguntas, sem explicações adicionais ou coisas como 'aqui estão as perguntas'.
+        #     Pergunta original: {question}""",
+        # )
 
 
+        # llm_retriever = ChatOllama(model="llama3.1", temperature=0)
+        # llm_chain = QUERY_PROMPT | llm_retriever | output_parser
+        # retriever = MultiQueryRetriever(
+        #     retriever=vector_store.as_retriever(), llm_chain=llm_chain, parser_key="lines", include_original=True
+        # )
+        
+        """criação do mecanismo de busca, com reranking"""
+        retriever = self.vector_store.as_retriever(search_kwargs={"k": 20})
+        model = HuggingFaceCrossEncoder(model_name="BAAI/bge-reranker-base")
+        compressor = CrossEncoderReranker(model=model, top_n=5)
+        self.compression_retriever = ContextualCompressionRetriever(
+            base_compressor=compressor, base_retriever=retriever
+        )
 
-graph_builder = StateGraph(MessagesState)
+        retrieve_tool = tool(response_format="content_and_artifact")(self.retrieve)
+        tools = ToolNode([retrieve_tool])
 
+        graph_builder = StateGraph(MessagesState)
+        """monta o grafo"""
+        graph_builder.add_node(self.query_or_respond)
+        graph_builder.add_node(tools)
+        graph_builder.add_node(self.generate)
 
-@tool(response_format="content_and_artifact")
-def retrieve(query: str):
-    """Retorna as informações relacionadas com a consulta."""
-    #retrieved_docs = vector_store.similarity_search(query, k=5)
-    retrieved_docs = compression_retriever.invoke(query)
+        graph_builder.set_entry_point("query_or_respond")
+        graph_builder.add_conditional_edges(
+            "query_or_respond",
+            tools_condition,
+            {END: END, "tools": "tools"},
+        )
+        graph_builder.add_edge(
+            "tools",
+            "generate",
+        )
+        graph_builder.add_edge(
+            "generate",
+            END,
+        )
 
-    
-    serialized = "\n\n".join(
-        (f"Source: {doc.metadata}\n" f"Content: {doc.page_content}") for doc in retrieved_docs
-    )
+        self.graph = graph_builder.compile()
 
-    return serialized, retrieved_docs
+        memory = MemorySaver()
+        self.graph = graph_builder.compile(checkpointer=memory)
     
 
-def query_or_respond(state: MessagesState):
-    """Gera tool call retrieve or respond."""
-    llm_with_tools = llm.bind_tools([retrieve])
-    response = llm_with_tools.invoke(state["messages"])
-
-    return {"messages": [response]}
-
-tools = ToolNode([retrieve])
-
-def generate(state: MessagesState):
-    """Gera a resposta."""
-
-    recent_tool_messages = []
-    for message in reversed(state["messages"]):
-        if message.type == "tool":
-            recent_tool_messages.append(message)
-        else:
-            break
-
-    tool_messages = recent_tool_messages[::-1]
-
-    docs_content = "\n\n".join(doc.content for doc in tool_messages)
-    system_message_content = (
-        """Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da UTFPR.
-        Os documentos abaixo apresentam as fontes atualizadas e devem ser consideradas como verdade.
-        Cite a fonte quando fornecer a informação, nunca altere o link. Se não souber a resposta ou não haver documentos, diga que não sabe.
-        Sempre escreva no formato markdown
-
-
-        Documentos:
-        \n\n
-        """
-        f"{docs_content}"
-
-
-    )
-    conversation_messages = [
-        message
-        for message in state["messages"]
-        if message.type in ("human", "system")
-        or (message.type == "ai" and not message.tool_calls)
-    ]
-    prompt = [SystemMessage(system_message_content)] + conversation_messages
-
-    response = llm.invoke(prompt)
-    return {"messages": [response]}
-
-"""monta o grafo"""
-graph_builder.add_node(query_or_respond)
-graph_builder.add_node(tools)
-graph_builder.add_node(generate)
-
-graph_builder.set_entry_point("query_or_respond")
-graph_builder.add_conditional_edges(
-    "query_or_respond",
-    tools_condition,
-    {END: END, "tools": "tools"},
-)
-graph_builder.add_edge(
-    "tools",
-    "generate",
-)
-graph_builder.add_edge(
-    "generate",
-    END,
-)
-
-graph = graph_builder.compile()
-
-memory = MemorySaver()
-graph = graph_builder.compile(checkpointer=memory)
-
-config = {"configurable": {"thread_id": "abc123"}}
-
-input_message = "qual o prazo máximo de entrega para o relatório parcial de estágio?"
-
-
-def answer(message, chat_history, session_id):
-    config = {"configurable": {"thread_id": session_id}}
-
-    result = graph.invoke(
-        {"messages": [{"role": "user", "content": message}]},
-        stream_mode="values",
-        config=config,
-    )
-    print(result["messages"][result["messages"].__len__()-2])
-    result_answer = result["messages"][-1].content
-    return result_answer
-
-def full_answer(message, chat_history, session_id):
-    config = {"configurable": {"thread_id": session_id}}
-
-    result = graph.invoke(
-        {"messages": [{"role": "user", "content": message}]},
-        stream_mode="values",
-        config=config,
-    )
     
-    result_answer = result["messages"]
-    return result_answer
+
+
+    #@tool(response_format="content_and_artifact")
+    def retrieve(self, query: str):
+        """Retorna as informações relacionadas com a consulta."""
+        #retrieved_docs = vector_store.similarity_search(query, k=5)
+        retrieved_docs = self.compression_retriever.invoke(query)
+
+        
+        serialized = "\n\n".join(
+            (f"Source: {doc.metadata}\n" f"Content: {doc.page_content}") for doc in retrieved_docs
+        )
+
+        return serialized, retrieved_docs
+        
+
+    def query_or_respond(self,state: MessagesState):
+        """Gera tool call retrieve or respond."""
+        llm_with_tools = self.llm.bind_tools([self.retrieve])
+        response = llm_with_tools.invoke(state["messages"])
+
+        return {"messages": [response]}
+
+    
+
+    def generate(self,state: MessagesState):
+        """Gera a resposta."""
+
+        recent_tool_messages = []
+        for message in reversed(state["messages"]):
+            if message.type == "tool":
+                recent_tool_messages.append(message)
+            else:
+                break
+
+        tool_messages = recent_tool_messages[::-1]
+
+        docs_content = "\n\n".join(doc.content for doc in tool_messages)
+        system_message_content = (
+            """Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da UTFPR.
+            Os documentos abaixo apresentam as fontes atualizadas e devem ser consideradas como verdade.
+            Cite a fonte quando fornecer a informação, nunca altere o link. Se não souber a resposta ou não haver documentos, diga que não sabe.
+            Sempre escreva no formato markdown
+
+
+            Documentos:
+            \n\n
+            """
+            f"{docs_content}"
+
+
+        )
+        conversation_messages = [
+            message
+            for message in state["messages"]
+            if message.type in ("human", "system")
+            or (message.type == "ai" and not message.tool_calls)
+        ]
+        prompt = [SystemMessage(system_message_content)] + conversation_messages
+
+        response = self.llm.invoke(prompt)
+        return {"messages": [response]}
+
+    
+
+
+
+    def answer(self,message, chat_history, session_id):
+        config = {"configurable": {"thread_id": session_id}}
+
+        result = self.graph.invoke(
+            {"messages": [{"role": "user", "content": message}]},
+            stream_mode="values",
+            config=config,
+        )
+        
+        result_answer = result["messages"][-1].content
+        return result_answer
+
+    def full_answer(self,message, chat_history, session_id):
+        config = {"configurable": {"thread_id": session_id}}
+
+        result = self.graph.invoke(
+            {"messages": [{"role": "user", "content": message}]},
+            stream_mode="values",
+            config=config,
+        )
+        
+        result_answer = result["messages"]
+        return result_answer
 
 
 
