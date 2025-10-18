@@ -39,7 +39,7 @@ def get_chroma_client(host="http://localhost:8000"):
 
 client_chroma = get_chroma_client(chroma_url)
 
-llm = ChatOllama(model="llama3.1", temperature=0.5, base_url=ollama_url)
+llm = ChatOllama(model="llama3.2", temperature=0.5, base_url=ollama_url)
 model_name = "Alibaba-NLP/gte-multilingual-base"
 
 embeddings = HuggingFaceEmbeddings(

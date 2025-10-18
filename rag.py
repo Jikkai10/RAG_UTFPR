@@ -1,7 +1,3 @@
-from chromadb import HttpClient
-from langchain_ollama import ChatOllama
-from langchain.retrievers.multi_query import MultiQueryRetriever
-from langchain_huggingface import HuggingFaceEmbeddings
 from langgraph.graph import MessagesState, StateGraph
 from langchain_core.tools import tool
 from langchain_core.messages import SystemMessage
@@ -13,9 +9,6 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 import logging
-import os
-import chromadb
-import requests
 
 
 # logging.basicConfig()

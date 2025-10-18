@@ -15,3 +15,5 @@ fastapi[standard]
 ragas
 datasets
 uvicorn
+tabulate
+pandas

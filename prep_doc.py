@@ -11,13 +11,14 @@ from bs4 import BeautifulSoup
 import base64
 import numpy as np
 import cv2 
-import ollama
 import re
 from typing import List, Tuple, Dict
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 import os
 import chromadb
+import pandas as pd
+from io import StringIO
 
 
 CAP_RE   = re.compile(r"^\s*Cap[ií]tulo\s+([IVXLCDM]+)\b.*",  re.IGNORECASE)
@@ -34,62 +35,13 @@ def is_table_empty(table):
     return True 
 
 def get_table_text(table):
-    soup = BeautifulSoup(table, "html.parser")
-    rows = soup.find_all("tr")
-    headers = [th.get_text(strip=True) for th in rows[0].find_all(['td', 'th'])]
-    data_rows = rows[1:]
-
-    # Armazena valores ativos de rowspan
-    active_rowspans = {}
-
-    frases = ""
-    for i, row in enumerate(data_rows):
-        cells = []
-        col_index = 0
-        tds = row.find_all(['td', 'th'])
-        td_idx = 0
-        
-        while col_index < len(headers):
-            # Verifica se temos rowspan de linha anterior para essa coluna
-            if col_index in active_rowspans and active_rowspans[col_index]['rows_left'] > 0:
-                cells.append(active_rowspans[col_index]['value'])
-                active_rowspans[col_index]['rows_left'] -= 1
-                col_index += 1
-                continue
-            
-            if td_idx >= len(tds):
-                return table
-            cell = tds[td_idx]
-            td_idx += 1
-            
-            
-            value = cell.get_text(strip=True)
-            rowspan = int(cell.get('rowspan', 1))
-            colspan = int(cell.get('colspan', 1))
-            
-
-            if rowspan > 1:
-                active_rowspans[col_index] = {'value': value, 'rows_left': rowspan - 1}
-
-            if colspan > 1:
-                for _ in range(colspan):
-                    cells.append(value)
-                    col_index += 1
-            else:
-                cells.append(value)
-                col_index += 1
-            
-
-        # Montar frase com as células correspondentes
-        row_dict = dict(zip(headers, cells))
-        frase = ""
-        for header in headers:
-            frase += f"{header}: {row_dict[header]}, "
-        
-        frases += frase + "\n"
-
+    df = pd.read_html(StringIO(table))[0]
+    # o cabeçalho está ficando na primeira linha
+    df.columns = df.iloc[0]
+    df = df[1:]
+    mark = df.to_markdown(index=False)
     
-    return frases
+    return mark
 
 class PrepDocs:
     def __init__(self, vector_store, llm):
@@ -103,7 +55,7 @@ class PrepDocs:
     def get_description(self,table):
         prompt = (
             """
-                forneça uma descrição simples e precisa da tabela a seguir em até 500 caracteres, não forneça mais nada, apenas a descrição
+                forneça uma descrição simples e precisa da tabela a seguir em até 1000 caracteres, não forneça mais nada, apenas a descrição
             """
             
         )
@@ -318,7 +270,7 @@ class PrepDocs:
 
             documents.extend(chunks)
             metadatas.extend(meta)
-
+        
         self.insert_data(documents, metadatas)
     
 if __name__ == "__main__":
@@ -364,7 +316,7 @@ if __name__ == "__main__":
 
     client_chroma = get_chroma_client(chroma_url)
 
-    llm = ChatOllama(model="llama3.1", temperature=0.5, base_url=ollama_url)
+    llm = ChatOllama(model="llama3.2", temperature=0.5, base_url=ollama_url)
     model_name = "Alibaba-NLP/gte-multilingual-base"
 
     embeddings = HuggingFaceEmbeddings(
