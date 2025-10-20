@@ -1,15 +1,23 @@
+from typing import List
 import uuid
 from datasets import Dataset
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
 import numpy as np
+from pydantic import BaseModel
 from ragas.metrics import faithfulness, answer_relevancy, context_precision, context_recall
 from ragas import evaluate, RunConfig
 import json
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
-import rag
+import requests
 
+class MessageRequest(BaseModel):
+    message: str
+    chat_history: List[dict] = []
+    session_id: str
+
+base_url = "http://localhost:8080"
 
 llm_lang = ChatOllama(model="llama3.1",verbose=False,timeout=600,num_ctx=8192,disable_streaming=False)
 
@@ -24,6 +32,8 @@ embeddings = LangchainEmbeddingsWrapper(embeddings_lang)
 llm = LangchainLLMWrapper(llm_lang)
 
 
+
+
 def make_data():
     # arquivo json com perguntas em question" e resposta esperada em "ground_truth"
     with open("aval_utfpr_rag.json", "r") as f:
@@ -31,11 +41,17 @@ def make_data():
 
     data =  []
     for item in aval:
-        result = rag.full_answer(item["question"], [],  str(uuid.uuid4()))
+        message = MessageRequest(message=item["question"], chat_history=[],  session_id=str(uuid.uuid4()))
+        result = requests.post(base_url+"/rag", json=message.model_dump())
+        
+        if(result.status_code != 200):
+            return
+        result = result.json()
+        
         data.append({
             "question": item["question"],
-            "answer": result[-1].content,
-            "contexts": [doc.page_content for doc in result[result.__len__()-2].artifact],
+            "answer": result[-1]["content"],
+            "contexts": [doc["page_content"] for doc in result[result.__len__()-2]["artifact"]],
             "ground_truth": item["ground_truth"]
         })
     with open('data.json', 'w', encoding='utf-8') as f:
@@ -48,7 +64,7 @@ def load_data():
         data = json.load(f)
     return data
 
-data = make_data()
+data = load_data()
 
 dataset = Dataset.from_list(data)
 
@@ -67,8 +83,9 @@ def batch_evaluate(full_dataset, batch_size=5):
             embeddings=embeddings,
             run_config=run_config,
         )
+        
         print(batch_result)
-        results_list.append(batch_result)
+        results_list.append(batch_result.scores[0])
         
     final_result = {}
     for metric in results_list[0].keys():

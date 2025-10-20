@@ -63,7 +63,7 @@ prep_doc = PrepDocs(vector_store=vector_store, llm=llm)
 
 @app.post("/rag")
 def answer_api(request: MessageRequest):
-    response = rag.answer(request.message, request.chat_history, request.session_id)
+    response = rag.full_answer(request.message, request.chat_history, request.session_id)
     return response
 
 @app.post("/docs")
