@@ -19,7 +19,7 @@ class MessageRequest(BaseModel):
 
 base_url = "http://localhost:8080"
 
-llm_lang = ChatOllama(model="llama3.1",verbose=False,timeout=600,num_ctx=8192,disable_streaming=False)
+llm_lang = ChatOllama(model="llama3.2",verbose=False,timeout=600,num_ctx=8192,disable_streaming=False)
 
 model_name = "Alibaba-NLP/gte-multilingual-base"
 embeddings_lang = HuggingFaceEmbeddings(

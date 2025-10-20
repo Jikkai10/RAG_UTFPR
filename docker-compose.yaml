@@ -13,7 +13,7 @@ services:
       bash -c "
         ollama serve & 
         sleep 5 && 
-        ollama pull llama3.1 && 
+        ollama pull llama3.2 && 
         wait
       "
     deploy:
