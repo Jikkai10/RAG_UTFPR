@@ -14,8 +14,11 @@ Construção de um chatbot com LLM que utiliza RAG para obter informações dos 
     curl -fsSL https://ollama.com/install.sh | sh
 
 #### Modelo:
+Os modelos testados foram llama3.1 e llama3.2
 
-    ollama pull llama3.1
+Para testes é recomendado o llama3.2 por ser mais leve e rápido, embora tenha pior desempenho 
+
+    ollama pull llama3.2
 
 mais informações: https://ollama.com
 
