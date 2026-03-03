@@ -2,25 +2,29 @@ from typing import List
 import chromadb
 import gradio as gr
 import uuid
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
 from pydantic import BaseModel
 import uuid
+from db.connection import Neo4jConnection
 from rag import Rag
-from prep_doc import PrepDocs
+from extract_info.extract import PrepDocs
 import requests
+from config import UPLOAD_DIR
+from extract_info.util import retrieve_all_documents, delete_document
 import os
 
 
 class MessageRequest(BaseModel):
     message: str
-    chat_history: List[dict] = []
-    session_id: str
     
 class DocumentsPost(BaseModel):
-    documents: List[dict]
+    name: str
+    url: str
     
 ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
@@ -55,21 +59,103 @@ vector_store = Chroma(
     persist_directory=chromadb_path
 )    
 
-    
+db = Neo4jConnection()    
 app = FastAPI()
 
-rag = Rag(vector_store=vector_store, llm=llm)
-prep_doc = PrepDocs(vector_store=vector_store, llm=llm)
+rag = Rag(embedding_model=embeddings, llm=llm, db=db)
+prep_doc = PrepDocs(llm=llm, embedding=embeddings)
 
-@app.post("/rag")
-def answer_api(request: MessageRequest):
-    response = rag.full_answer(request.message, request.chat_history, request.session_id)
-    return response
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.post("/upload-pdf/")
+async def upload_pdf(
+    nome: str = Form(...),          # campo texto
+    file: UploadFile = File(...)    # arquivo
+):
+
+    # gera nome único
+    filename = f"{uuid.uuid4()}.pdf"
+    file_path = UPLOAD_DIR / filename
+
+    contents = await file.read()
+
+    with open(file_path, "wb") as f:
+        f.write(contents)
+        
+    doc = {
+        "name": nome,
+        "filename": filename
+    }
+    
+    prep_doc.run([doc], 1)
+    
+
+@app.get("/chats")
+def new_chat():
+    session_id = str(uuid.uuid4())
+    return {"id": session_id}
+
+@app.post("/rag/{session_id}")
+async def answer_api(session_id: str, request: MessageRequest):
+    async def event_generator():
+        async for chunk in rag.answer(
+            request.message,
+            [],
+            session_id,
+        ):
+            yield chunk
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
+    # response = rag.full_answer(request.message, [], session_id)
+    # return response
 
 @app.post("/docs")
-def post_docs(request: DocumentsPost):
-    prep_doc.run(request.documents)
+def post_docs(req: DocumentsPost):
+    response = requests.get(req.url)
+
+    if response.status_code != 200:
+        return {"error": "Não foi possível baixar"}
+
+    filename = f"{uuid.uuid4()}.html"
+    file_path = UPLOAD_DIR / filename
+
+    # 🔥 Salva o HTML bruto
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(response.text)
+        
+    doc = {
+        "name": req.name,
+        "filename": filename,
+        "url": req.url
+    }
+    prep_doc.run([doc], 0)
     
+@app.get("/all_docs")
+def get_all_docs():
+    return retrieve_all_documents()
+
+@app.delete("/delete_doc/{doc_id}")
+def delete_doc(doc_id: str):
+    delete_document(doc_id)
+    return {"message": f"Documento {doc_id} deletado com sucesso."}
+    
+
 
 with gr.Blocks() as interface:
     session_id_state = gr.State(str(uuid.uuid4()))  # gera um session_id aleatório
@@ -88,10 +174,22 @@ with gr.Blocks() as interface:
 app = gr.mount_gradio_app(app, interface, path="/chat")
 
 def process_data(name, url):
+    response = requests.get(url)
+
+    if response.status_code != 200:
+        return {"error": "Não foi possível baixar"}
+
+    filename = f"{uuid.uuid4()}.html"
+    file_path = UPLOAD_DIR / filename
+
+    # 🔥 Salva o HTML bruto
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(response.text)
     docs = [
         {
             "name": name,
-            "url": url,
+            "filename": filename,
+            "url": url
         }
     ]
     prep_doc.run(docs)

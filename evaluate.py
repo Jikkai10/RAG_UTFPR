@@ -1,3 +1,4 @@
+import os
 from typing import List
 import uuid
 from datasets import Dataset
@@ -19,7 +20,19 @@ class MessageRequest(BaseModel):
 
 base_url = "http://localhost:8080"
 
-llm_lang = ChatOllama(model="llama3.2",verbose=False,timeout=600,num_ctx=8192,disable_streaming=False)
+#llm_lang = ChatOllama(model="llama3.2",verbose=False,timeout=600,num_ctx=8192,disable_streaming=False)
+
+from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model
+
+llm_lang = init_chat_model("gpt-4o-mini", model_provider="openai", base_url="https://models.inference.ai.azure.com", api_key=os.environ["GITHUB_TOKEN_MODELS"])
+# llm_lang = ChatOpenAI(
+#     model="gpt-4o-mini",
+#     api_key=os.environ["GITHUB_TOKEN"],
+#     base_url="https://models.inference.ai.azure.com"
+# )
+
+
 
 model_name = "Alibaba-NLP/gte-multilingual-base"
 embeddings_lang = HuggingFaceEmbeddings(
