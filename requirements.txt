@@ -5,6 +5,7 @@ langchain_huggingface
 langchain_ollama
 langchain_community
 langchain_core
+langchain_neo4j
 chromadb
 ollama
 gradio
@@ -18,3 +19,7 @@ uvicorn
 tabulate
 pandas
 python-multipart
+python-jose 
+passlib[argon2]
+camelot-py[cv]
+neo4j

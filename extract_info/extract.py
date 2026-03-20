@@ -25,8 +25,8 @@ from db.connection import Neo4jConnection
 
 CAP_RE   = re.compile(r"^\s*Cap[ií]tulo\s+([IVXLCDM]+)\b.*",  re.IGNORECASE)
 SEC_RE   = re.compile(r"^\s*Se[cç][ãa]o\s+([IVXLCDM]+)\b.*", re.IGNORECASE)
-ART_RE   = re.compile(r"^\s*Art(?:igo)?\.\s*(\d+)[ºo]?\b.*", re.IGNORECASE)
-REF_RE   = re.compile(r"Art(?:igo)?\.\s*(\d+)[ºo]?\b.*", re.IGNORECASE)
+ART_RE   = re.compile(r"^\s*Art(?:igo)?\.?\s*(\d+)[ºo]?\b.*", re.IGNORECASE)
+REF_RE = re.compile(r"\bArt(?:igo)?\.?\s*(\d+)[ºo]?\b", re.IGNORECASE)
 
 def is_table_empty(table):
     for row in table.find_all("tr"):
@@ -262,7 +262,7 @@ class PrepDocs:
 
     
 
-    def get_document(self,doc):
+    def get_document(self,doc, doc_type = 0):
         """
             partition html naturalmente exclui informações adicionais nas tags, como rowspan e colspan,
             o que pode ser problemático para descobrir o formato das tabelas,
@@ -285,18 +285,20 @@ class PrepDocs:
             frases.append(get_table_text(table))
             
         elements = partition_html(
-            text=html_content,
+            filename=str(file_path),
             extract_image_block_types=["Image"],
             extract_image_block_to_payload=True,
             
         )
-
-        docs = self.custom_split_by_hierarchy(elements, doc["name"], doc["filename"], frases)
-        list = dict_to_list(docs, self.chunks_to_embeddings)
         
-        inserir_estrutura(self.db, list)
+        docs = self.custom_split_by_hierarchy(elements, doc["name"], doc["filename"], frases)
+        list = dict_to_list(docs, doc_type, self.chunks_to_embeddings)
+        
+        if doc_type == 0:
+            doc["doc_id"] = None
+        inserir_estrutura(self.db, list, doc_type, doc["doc_id"])
 
-    def get_pdf_document(self,doc):
+    def get_pdf_document(self,doc, doc_type = 0):
         """
             inferencia de tabelas pode sair com erros
         """
@@ -312,9 +314,12 @@ class PrepDocs:
             extract_image_block_to_payload=True,
         )
 
-        docs =  self.custom_split_by_hierarchy(elements, doc["name"], doc["filename"])
-        list = dict_to_list(docs, self.chunks_to_embeddings)
-        inserir_estrutura(self.db, list)
+        docs = self.custom_split_by_hierarchy(elements, doc["name"], doc["filename"])
+        list = dict_to_list(docs, doc_type, self.chunks_to_embeddings)
+        
+        if doc_type == 0:
+            doc["doc_id"] = None
+        inserir_estrutura(self.db, list, doc_type, doc["doc_id"])
 
     
 
@@ -327,9 +332,9 @@ class PrepDocs:
         for i, doc in enumerate(docs):
             print(f"Processing {i+1}/{len(docs)}: {doc['name']}")
             if mode == 1:
-                self.get_document(doc)
+                self.get_document(doc, 0)
             else:
-                self.get_pdf_document(doc)
+                self.get_pdf_document(doc, 0)
 
             
     

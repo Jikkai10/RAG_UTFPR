@@ -7,6 +7,7 @@
 *.env
 teste.py
 .venv/
+uploads/
 .python-version
 data/
 __pycache__/

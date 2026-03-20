@@ -44,6 +44,13 @@ OPTIONS {
 };
 """
 
+query_constraints_user = """
+CREATE CONSTRAINT user_unique IF NOT EXISTS
+FOR (u:User)
+REQUIRE u.email IS UNIQUE;
+"""
+
+
 query_delete_all = """
 MATCH (n)
 DETACH DELETE n;
@@ -76,3 +83,5 @@ if __name__ == "__main__":
     print("Embedding constraints created successfully.")
     db.execute_query(query_index)
     print("Vector index created successfully.")
+    
+    db.execute_query(query_constraints_user)

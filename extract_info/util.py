@@ -1,6 +1,6 @@
 
 
-def dict_to_list(doc, embed_func: callable):
+def dict_to_list(doc, doc_type, embed_func: callable):
     capitulos_lista = []
     refs = []
     for cap_id, cap in doc["capitulos"].items():
@@ -12,15 +12,16 @@ def dict_to_list(doc, embed_func: callable):
 
             for cont_id, cont in sec["conteudos"].items():
                 chunk_lista = []
-                for chunk in cont["chunks"]:
-                    chunk_lista.append({
-                        "id": chunk["id"],
-                        "embedding": embed_func(chunk["texto"])
-                    })
+                if doc_type == 0:
+                    for chunk in cont["chunks"]:
+                        chunk_lista.append({
+                            "id": chunk["id"],
+                            "embedding": embed_func(chunk["texto"])
+                        })
                 refs.append({
                     "origem": cont["id"],
                     "destino": cont.get("refs", [])
-                    })
+                })
                 
                 conteudos_lista.append({
                     "id": cont["id"],
@@ -70,13 +71,14 @@ def dict_to_list(doc, embed_func: callable):
         "refs": refs
     }
     
-def inserir_estrutura(tx, doc):
+def inserir_estrutura(tx, doc, doc_type, doc_id = None):
     
     
     query_cap = """
 MERGE (d:Document {id: $doc_id})
 SET d.titulo = $doc_titulo,
-    d.path = $doc_path
+    d.path = $doc_path,
+    d.tipo = $doc_type
 
 WITH d
 UNWIND $capitulos AS cap
@@ -87,6 +89,14 @@ SET c.capitulo = cap.capitulo,
 
 MERGE (d)-[:HAS_CAP]->(c)
 """
+
+    query_norm = """
+        MATCH (d:Document {id: $doc_id})
+        MATCH (p:Document {id: $pai_id})
+        
+        MERGE (p)-[:HAS_NORM]->(d)
+    """
+    
 
     query_cont_cap = """
 UNWIND $capitulos AS cap
@@ -178,6 +188,24 @@ WHERE dest IS NOT NULL
 
 MERGE (orig)-[:REFERENCES]->(dest)
 """
+
+    query_refs_norm = """
+UNWIND $refs AS ref
+
+MATCH (orig:Content {id: ref.origem})
+
+UNWIND ref.destino AS num_ref
+
+MATCH (dest:Content {
+    num: num_ref,
+    documento_id: $doc_id
+})
+
+WITH orig, dest
+WHERE dest IS NOT NULL
+
+MERGE (orig)-[:REF_NORM]->(dest)
+"""
     # tx.run(query,
     #        doc_id=doc["id"],
     #        doc_titulo=doc.get("titulo", ""),
@@ -187,6 +215,7 @@ MERGE (orig)-[:REFERENCES]->(dest)
            parameters={
                "doc_id": doc["id"],
                "doc_titulo": doc.get("titulo", ""),
+               "doc_type": doc_type,
                "doc_path": doc["path"],
                "capitulos": doc["capitulos"]
            })
@@ -200,39 +229,101 @@ MERGE (orig)-[:REFERENCES]->(dest)
                "capitulos": doc["capitulos"],
                "doc_id": doc["id"]
            })
-    tx.execute_query(query_refs,
-           parameters={
-               "refs": doc["refs"],
-               "doc_id": doc["id"]
-           })
-    tx.execute_query(query_chunk_cap,
-           parameters={
-               "capitulos": doc["capitulos"]
-           })
-    tx.execute_query(query_chunk_sec,
-           parameters={
-               "capitulos": doc["capitulos"]
-           })
+    if doc_type == 0:
+        tx.execute_query(query_refs,
+            parameters={
+                "refs": doc["refs"],
+                "doc_id": doc["id"]
+            })
+    
+        tx.execute_query(query_chunk_cap,
+            parameters={
+                "capitulos": doc["capitulos"]
+            })
+        tx.execute_query(query_chunk_sec,
+            parameters={
+                "capitulos": doc["capitulos"]
+            })
+    else:
+        print(doc["refs"])
+        tx.execute_query(query_refs_norm,
+            parameters={
+                "refs": doc["refs"],
+                "doc_id": doc_id
+            })
+        tx.execute_query(query_norm,
+            parameters={
+                "doc_id": doc["id"],
+                "pai_id": doc_id
+            })
     
     
 def retrieve_all_documents(tx):
     query = """
-    MATCH (d:Document)
-    RETURN d.id AS id, d.titulo AS titulo, d.path AS path
+    MATCH (d:Document {tipo: $tipo})
+    
+    OPTIONAL MATCH (d)-[:HAS_NORM]->(n:Document)
+    
+    RETURN d, collect(n) as norms
     """
-    result = tx.run(query)
-    return [record.data() for record in result]
+    
+    result = tx.execute_query(query, parameters = {"tipo": 0})
+    
+    docs = []
+    for record in result:
+        norms = []
+        for norm in record["norms"]:
+            norms.append(
+                {
+                    "id": norm["id"],
+                    "titulo": norm["titulo"],
+                    "path": norm["path"]
+                }
+            )
+        
+        d = record["d"]
+        
+        doc = {
+            "id": d["id"],
+            "titulo": d["titulo"],
+            "path": d["path"],
+            "norms": norms
+        }
+        docs.append(doc)
+    
+    return docs
+
+def return_document(tx, doc_id):
+    query= """
+    MATCH (d:Document {id: $doc_id})
+    
+    RETURN d
+    """
+    result = tx.execute_query(query, parameters = {"doc_id": doc_id})
+    record = result[0]
+    return record["d"]
 
 def delete_document(tx, doc_id):
     query = """
-    MATCH (d:Documento {id: $doc_id})
-    CALL {
-        WITH d
-        MATCH (d)-[*]->(sub)
-        RETURN collect(DISTINCT sub) AS nodes
-    }
-    WITH d, nodes
-    FOREACH (n IN nodes | DETACH DELETE n)
-    DETACH DELETE d
+    MATCH (d:Document {id: $doc_id})
+
+    OPTIONAL MATCH (d)-[:HAS_NORM]->(n)
+    WITH d, d.path AS doc_path, collect(DISTINCT n.path) AS norm_paths
+
+    OPTIONAL MATCH (d)-[:HAS_NORM|HAS_CAP|HAS_SEC|HAS_CONT|HAS_CHUNK*1..5]->(sub)
+    WITH doc_path, norm_paths, collect(DISTINCT sub) + collect(d) AS nodes
+
+    UNWIND nodes AS node
+    DETACH DELETE node
+
+    RETURN doc_path, norm_paths
     """
-    tx.run(query, doc_id=doc_id)
+    result = tx.execute_query(query, parameters = {"doc_id": doc_id})
+    path = []
+    record = result[0]
+    path.append(record["doc_path"])
+    for norm in record["norm_paths"]:
+        if norm:
+            path.append(norm)
+    print(path)
+    return path

@@ -29,6 +29,9 @@ class Neo4jConnection:
         with self._driver.session() as session:
             result = session.run(query, parameters)
             return [record.data() for record in result]
+    
+    def get_driver(self):
+        return self._driver
 
 
 #db = Neo4jConnection(URI, USER, PASSWORD)

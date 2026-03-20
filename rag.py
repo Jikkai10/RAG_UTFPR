@@ -20,10 +20,11 @@ from pydantic import BaseModel, Field
 import logging
 
 
+
 class Neo4jArticleRetriever(BaseRetriever):
     embedding_model: any
     db: any
-    k: int = 20
+    k: int = 5
 
     def _get_relevant_documents(self, query: str) -> List[Document]:
 
@@ -38,17 +39,28 @@ class Neo4jArticleRetriever(BaseRetriever):
         YIELD node AS ch, score
 
         MATCH (ct:Content)-[:HAS_CHUNK]->(ch)
-        
+
         WITH ct, max(score) AS score
 
-        OPTIONAL MATCH (s:Section)-[:HAS_CONT]->(ct)
-        OPTIONAL MATCH (c1:Chapter)-[:HAS_CONT]->(ct)
+      
+        OPTIONAL MATCH (ct)-[:REFERENCES]-(ref:Content)
+
+        WITH ct, score, collect(DISTINCT ref) AS refs
+
+        
+        UNWIND ([ct] + refs) AS related_ct
+        WITH DISTINCT related_ct, max(score) as score
+
+        OPTIONAL MATCH (res:Content)-[:REF_NORM]->(related_ct)
+        OPTIONAL MATCH (s:Section)-[:HAS_CONT]->(related_ct)
+        OPTIONAL MATCH (c1:Chapter)-[:HAS_CONT]->(related_ct)
         OPTIONAL MATCH (c2:Chapter)-[:HAS_SEC]->(s)
 
         WITH 
-            ct,
+            related_ct AS ct,
             coalesce(c1, c2) AS chapter,
             s,
+            res,
             score
 
         MATCH (d:Document)-[:HAS_CAP]->(chapter)
@@ -57,10 +69,12 @@ class Neo4jArticleRetriever(BaseRetriever):
             score,
             ct.texto AS texto,
             ct.tipo AS tipo,
-            ct.num as numero,
+            ct.num AS numero,
+            res.texto AS res_texto,
             chapter.capitulo AS capitulo,
             s.secao AS secao,
             d.titulo AS documento
+
         ORDER BY score DESC
         """
 
@@ -70,6 +84,8 @@ class Neo4jArticleRetriever(BaseRetriever):
 
         for record in results:
             texto = record["texto"]
+            if record["res_texto"]:
+                texto += "\n Esse artigo foi alterado: \n" + record["res_texto"]
             tipo = record["tipo"]
 
             docs.append(
@@ -80,11 +96,11 @@ class Neo4jArticleRetriever(BaseRetriever):
                         "Capitulo": record["capitulo"],
                         "Seção": record["secao"] if record["secao"] else None,
                         "Documento": record["documento"],
-                        "score": record["score"]
+                        
                     }
                 )
             )
-        #print(docs)
+        
         return docs
 
 
@@ -105,6 +121,7 @@ class Rag:
         self.db = db
         self.embedding_model = embedding_model
         self.llm = llm
+        
 
         """comentado a possibilidade de criação de perguntas derivadas da original"""
         # class LineListOutputParser(BaseOutputParser[List[str]]):
@@ -134,7 +151,7 @@ class Rag:
         # )
         
         """criação do mecanismo de busca, com reranking"""
-        retriever = Neo4jArticleRetriever(embedding_model=self.embedding_model, db=self.db, k=20)
+        retriever = Neo4jArticleRetriever(embedding_model=self.embedding_model, db=self.db, k=5)
         model = HuggingFaceCrossEncoder(model_name="BAAI/bge-reranker-base")
         compressor = CrossEncoderReranker(model=model, top_n=5)
         self.compression_retriever = ContextualCompressionRetriever(
@@ -169,8 +186,8 @@ class Rag:
 
         self.graph = graph_builder.compile()
 
-        memory = MemorySaver()
-        self.graph = graph_builder.compile(checkpointer=memory)
+        # memory = MemorySaver()
+        # self.graph = graph_builder.compile(checkpointer=memory)
     
 
     
@@ -192,7 +209,7 @@ class Rag:
 
     def query_or_respond(self,state: MessagesState):
         """Gera tool call retrieve or respond."""
-        llm_with_tools = self.llm.bind_tools([self.retrieve])
+        llm_with_tools = self.llm.bind_tools([self.retrieve], tool_choice="required")
         response = llm_with_tools.invoke(state["messages"])
 
         return {"messages": [response]}
@@ -210,7 +227,7 @@ class Rag:
                 break
 
         tool_messages = recent_tool_messages[::-1]
-
+        
         docs_content = "\n\n".join(doc.content for doc in tool_messages)
         # system_message_content = (
         #     """Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da UTFPR.
@@ -248,67 +265,93 @@ class Rag:
         ]
         prompt = [SystemMessage(system_message_content)] + conversation_messages
 
-        #structured_llm = self.llm.with_structured_output(RAGResponse)
-        # response = self.llm.invoke(prompt)
-        
-        # return  {
-        # "messages": [
-        #     response
-        # ],
-        
-        # }
         async for chunk in self.llm.astream(prompt):
             yield {
                 "messages": [chunk]
             }
         
-    def sources_used(self, state: MyState):
-        """Retorna os IDs dos documentos usados."""
-        
-        last_mensage = state["messages"][-1].content
-        other_mensages = state["messages"][:-1]
-        
-        recent_tool_messages = []
-        for message in reversed(other_mensages):
-            if message.type == "tool":
-                recent_tool_messages.append(message)
-            else:
-                break
-
-        tool_messages = recent_tool_messages[::-1]
-
-        docs_content = "\n\n".join(doc.content for doc in tool_messages)
-        
-        system_message_content = ("""
-        Você é um assistente de IA com o objetivo de identificar quais documentos foram utilizados para gerar a resposta fornecida. 
-        A resposta foi gerada com base em uma série de documentos, cada um identificado por um ID específico. 
-        Sua tarefa é comparar cuidadosamente a resposta com o conteúdo dos documentos fornecidos e identificar quais documentos foram explicitamente utilizados para gerar a resposta.
-        Compare cuidadosamente a resposta com cada documento.
-        Retorne apenas os IDs cujos textos contêm explicitamente as informações usadas na resposta.
-        Se não houver correspondência clara, não retorne o ID.
-        A resposta é a seguinte:
-        \n\n
-        """
-        f"{last_mensage}"
-        """
-        \n\n
-        Os documentos fornecidos foram:
-        \n\n
-        """
-        f"{docs_content}"
-        )
-        prompt = [SystemMessage(system_message_content)]
-        
-        structured_llm = self.llm.with_structured_output(RAGSources)
-        
-        response = structured_llm.invoke(prompt)
-        
-        return {
-            "used_sources": response.sources,
-        }
 
     
+    def get_recent_messages(self, thread_id, limit=10):
 
+        query = """
+        MATCH (c:Chat {thread_id:$thread_id})-[:HAS_MESSAGE]->(m)
+
+        RETURN m.role as role, m.content as content
+        ORDER BY m.timestamp DESC
+        LIMIT $limit
+        """
+
+        result = self.db.execute_query(
+            query, parameters = {
+                "thread_id": thread_id,
+                "limit": limit
+            }
+        )
+        
+        history = [
+                {"role": r["role"], "content": r["content"]}
+                for r in result
+            ][::-1]
+       
+
+        return history
+    
+    def save_message(self, thread_id, role, content, sources = []):
+
+        query = """
+        MERGE (c:Chat {thread_id:$thread_id})
+
+        CREATE (m:Message {
+            id: randomUUID(),
+            role: $role,
+            content: $content,
+            sources: $sources,
+            timestamp: datetime()
+        })
+
+        MERGE (c)-[:HAS_MESSAGE]->(m)
+        """
+
+        self.db.execute_query(
+            query, parameters = {
+                "thread_id": thread_id,
+                "role": role,
+                "content": content,
+                "sources": sources
+            }
+        )
+        
+    
+    async def update_chat(self, thread_id: str, message: str):
+        
+        prompt = f"""
+        Crie um título de chat curto e direto (maximo de 5 palavras) para esta pergunta.
+        Escreva apenas o titulo, sem "Aqui está", "O titulo é" ou similares.
+
+        Pergunta:
+        {message}
+
+        Título:
+        """
+
+        response = self.llm.invoke(prompt)
+        title = response.content
+        query="""
+        MATCH (c:Chat {thread_id: $thread_id})
+        SET c.title = $new_title
+        RETURN c
+        """
+        
+        self.db.execute_query(
+            query, parameters = {
+                "thread_id": thread_id,
+                "new_title": title
+            }
+        )
+        
+        return title
+        
 
 
     async def answer(self,message, chat_history, session_id):
@@ -330,11 +373,18 @@ class Rag:
         #     "sources": contexts
         # }
         # return result
-        config = {"configurable": {"thread_id": session_id}}
-
+        history = self.get_recent_messages(session_id)
+        
+        state_messages = history + [
+            {"role": "user", "content": message}
+        ]
+        self.save_message(session_id, "user", message)
+        sources = []
+        full_answer = ""
+        
+        # config = {"configurable": {"thread_id": session_id}}
         async for event in self.graph.astream_events(
-            {"messages": [{"role": "user", "content": message}]},
-            config=config,
+            {"messages": state_messages},
             version="v1",
         ):
 
@@ -356,7 +406,7 @@ class Rag:
 
                     
                     if hasattr(msg, "content") and msg.content:
-                        
+                        full_answer += msg.content
                         yield (
                             f"event: token\n"
                             f"data: {json.dumps(msg.content)}\n\n"
@@ -379,16 +429,33 @@ class Rag:
                         }
                         for doc in documents
                     ]
-
+                    sources += formatted_sources
                     yield (
                         f"event: sources\n"
                         f"data: {json.dumps(formatted_sources)}\n\n"
                     )
 
             await asyncio.sleep(0)
-
-        # 🔹 3️⃣ EVENTO FINAL
+            
+        self.save_message(session_id, "assistant", full_answer, sources=json.dumps(sources))
+        
         yield "event: end\ndata: done\n\n"
+        
+        if len(chat_history) == 0:
+            title = await self.update_chat(session_id, message)
+            
+            yield (
+                f"event: title\n"
+                f"data: {json.dumps(title)}\n\n"
+            )
+            
+       
+        
+        
+        
+            
+        
+        
 
     def full_answer(self,message, chat_history, session_id):
         config = {"configurable": {"thread_id": session_id}}
