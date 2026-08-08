@@ -2,8 +2,12 @@
 *.lock
 *.pdf
 *.json
+*.ipynb
+*.png
+*.env
+teste.py
 .venv/
+uploads/
 .python-version
-db/
 data/
 __pycache__/
