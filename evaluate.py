@@ -63,8 +63,8 @@ def make_data():
         
         data.append({
             "question": item["question"],
-            "answer": result[-1]["content"],
-            "contexts": [doc["page_content"] for doc in result[result.__len__()-2]["artifact"]],
+            "answer": result["answer"],
+            "contexts": [f"Fonte: {doc.metadata}\nConteudo: {doc.page_content}" for doc in result["sources"]],
             "ground_truth": item["ground_truth"]
         })
     with open('data.json', 'w', encoding='utf-8') as f:

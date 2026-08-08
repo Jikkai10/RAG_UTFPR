@@ -19,9 +19,10 @@ import os
 import chromadb
 import pandas as pd
 from io import StringIO
-from extract_info.util import dict_to_list, inserir_estrutura
+from extract_info.util import dict_to_list, inserir_estrutura, insert_calendar
 from config import UPLOAD_DIR
 from db.connection import Neo4jConnection
+import fitz  # PyMuPDF
 
 CAP_RE   = re.compile(r"^\s*Cap[ií]tulo\s+([IVXLCDM]+)\b.*",  re.IGNORECASE)
 SEC_RE   = re.compile(r"^\s*Se[cç][ãa]o\s+([IVXLCDM]+)\b.*", re.IGNORECASE)
@@ -292,6 +293,7 @@ class PrepDocs:
         )
         
         docs = self.custom_split_by_hierarchy(elements, doc["name"], doc["filename"], frases)
+        
         list = dict_to_list(docs, doc_type, self.chunks_to_embeddings)
         
         if doc_type == 0:
@@ -321,6 +323,153 @@ class PrepDocs:
             doc["doc_id"] = None
         inserir_estrutura(self.db, list, doc_type, doc["doc_id"])
 
+
+
+    def extract_layout(self,pdf_path):
+
+        doc = fitz.open(pdf_path)
+
+        blocks = []
+
+        for page_num, page in enumerate(doc):
+
+            page_blocks = page.get_text("blocks")
+
+            for b in page_blocks:
+
+                x0, y0, x1, y1, text, _, _ = b
+
+                blocks.append({
+                    "page": page_num,
+                    "x0": x0,
+                    "y0": y0,
+                    "x1": x1,
+                    "y1": y1,
+                    "text": text.strip()
+                })
+
+        return blocks
+    
+    
+    def layout_to_markdown(self,blocks):
+        
+        MESES = [
+        "JANEIRO","FEVEREIRO","MARÇO","ABRIL","MAIO","JUNHO",
+        "JULHO","AGOSTO","SETEMBRO","OUTUBRO","NOVEMBRO","DEZEMBRO"
+        ]
+        padrao = r'(\d{1,2}(?:\s*(?:a|e|,)\s*\d{1,2})*)\s+(.+?)(?=\s+\d{1,2}\s+[A-Za-zÁ-ÿ]|\Z)'
+
+        md = []
+        current_month = None
+        actual_page = None
+        cont = 0
+        doc = []
+        frag = {}
+        mes = ""
+        
+        for b in blocks:
+
+            text = b["text"].replace("\n", " ").strip()
+            text = re.sub(r'_{3,}', '', text).strip()
+
+            if actual_page != b["page"]:
+                if md and current_month == None:
+                    md = md[:-1]
+
+                if md:
+                    mes = "\n".join(md)
+                    frag["chunks"].append({"texto": mes})
+                    frag["md"] += f"\n{mes}"
+                    doc.append(frag)
+
+                md = []
+                frag = {}
+                frag["md"] = ""
+                frag["chunks"] = []
+                frag["periodo"] = "x"
+                #frag["chunks"]["texto"] = []
+
+                actual_page = b["page"]
+                current_month = None
+                md.append(f"\n# {b["text"]}")
+                cont = 0
+                continue
+            actual_page = b["page"]
+
+            if not text:
+                continue
+
+            # detectar mês
+            if any(m in text for m in MESES):
+
+                for m in MESES:
+                    if m in text:
+                        current_month = m
+                        
+                        mes = "\n".join(md)
+                        frag["chunks"].append({"texto": mes})
+                        frag["md"] += f"\n{mes}"
+                        md = []
+                        md.append(f"\n## {m}\n")
+                        text = text.replace(m, "").strip()
+                        break
+
+
+            if re.match(padrao, text):
+                for dia, descricao in re.findall(padrao, text):
+                    md.append(f"- {dia} {descricao}")
+                    #frag["chunks"].append({"texto": md[-1]})
+
+
+            else:
+
+                if current_month == None:
+                    cont += 1
+                if cont == 1:
+                    frag["campus"] = text
+
+                elif cont == 2:
+                    frag["categoria"] = text
+
+                else:
+                    frag["periodo"] = text
+
+                if md:
+                    md[-1] += " " + text
+                    
+        mes = "\n".join(md)
+        frag["chunks"].append({"texto": mes})
+        frag["md"] += f"\n{mes}"
+        doc.append(frag)
+        #print(doc)
+        return doc
+    
+    def get_calendar_document(self, doc):
+        path = UPLOAD_DIR / doc["filename"]
+        blocks = self.extract_layout(path)
+        parts = self.layout_to_markdown(blocks)
+        doc_id = str(uuid.uuid4())
+        for part in parts:
+            part["id"] = f"{doc_id}_{part["campus"]}_{part["categoria"]}_{part["periodo"]}"
+            for i, chunk in enumerate(part["chunks"]):
+                chunk["id"] = f"{part["id"]}_{i}"
+                chunk["embedding"] = self.chunks_to_embeddings(chunk=chunk["texto"])
+                
+        docs = {
+            "doc_id": doc_id,
+            "titulo": doc["name"],
+            "path": doc["filename"],
+            "parts": parts
+        }
+        
+        insert_calendar(self.db, docs)
+        
+        #docs = self.custom_split_by_hierarchy(elements, doc["name"], doc["filename"])
+        # list = dict_to_list(docs, doc_type, self.chunks_to_embeddings)
+        
+        # if doc_type == 0:
+        #     doc["doc_id"] = None
+        # inserir_estrutura(self.db, list, doc_type, doc["doc_id"])
     
 
     def run(self,docs, mode=1):
@@ -336,6 +485,8 @@ class PrepDocs:
             else:
                 self.get_pdf_document(doc, 0)
 
+
+    
             
     
 if __name__ == "__main__":

@@ -71,6 +71,44 @@ def dict_to_list(doc, doc_type, embed_func: callable):
         "refs": refs
     }
     
+def insert_calendar(tx, doc):
+    query = """
+        MERGE (d:Document {id: $doc_id})
+        SET d.titulo = $doc_titulo,
+            d.path = $doc_path,
+            d.tipo = 3
+
+        WITH d
+        UNWIND $events AS event
+
+        MERGE (e:Events {id: event.id})
+        SET e.campus = event.campus,
+            e.categoria = event.categoria,
+            e.periodo = event.periodo,
+            e.texto = event.md
+
+        MERGE (d)-[:HAS_EVENT]->(e)
+
+        WITH e, event
+        UNWIND coalesce(event.chunks, []) AS chunk
+
+        MERGE (ch:Chunk {id: chunk.id})
+        SET ch.texto = chunk.texto,
+            ch.embedding = chunk.embedding
+
+        MERGE (e)-[:HAS_CHUNK]->(ch)
+    """
+    
+    tx.execute_query(query,
+           parameters={
+               "doc_id": doc["doc_id"],
+               "doc_titulo": doc.get("titulo", ""),
+               "doc_path": doc["path"],
+               "events": doc["parts"]
+           })
+    
+    
+    
 def inserir_estrutura(tx, doc, doc_type, doc_id = None):
     
     
@@ -260,15 +298,16 @@ MERGE (orig)-[:REF_NORM]->(dest)
     
 def retrieve_all_documents(tx):
     query = """
-    MATCH (d:Document {tipo: $tipo})
-    
+    MATCH (d:Document)
+    WHERE d.tipo <> $tipo
+
     OPTIONAL MATCH (d)-[:HAS_NORM]->(n:Document)
-    
-    RETURN d, collect(n) as norms
+
+    RETURN d, collect(n) AS norms
     """
-    
-    result = tx.execute_query(query, parameters = {"tipo": 0})
-    
+
+    result = tx.execute_query(query, parameters = {"tipo": 1})
+
     docs = []
     for record in result:
         norms = []

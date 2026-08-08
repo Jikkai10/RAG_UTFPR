@@ -1,21 +1,23 @@
 import asyncio
 import json
+from urllib import response
 
-from langchain.schema import AIMessage
+#from langchain.schema import AIMessage
 from langgraph.graph import MessagesState, StateGraph
 from langchain_core.tools import tool
 from langchain_core.messages import SystemMessage
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph import END
-from langgraph.checkpoint.memory import MemorySaver
-from langchain_chroma import Chroma
-from langchain.retrievers import ContextualCompressionRetriever
-from langchain.retrievers.document_compressors import CrossEncoderReranker
+#from langgraph.checkpoint.memory import MemorySaver
+#from langchain_chroma import Chroma
+#from langchain_classic.retrievers.contextual_compression import ContextualCompressionRetriever
+#from langchain_community.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
+from langchain_core.runnables import RunnableLambda
 from typing import List
-import numpy as np
+#import numpy as np
 from pydantic import BaseModel, Field
 import logging
 
@@ -38,44 +40,72 @@ class Neo4jArticleRetriever(BaseRetriever):
         )
         YIELD node AS ch, score
 
-        MATCH (ct:Content)-[:HAS_CHUNK]->(ch)
+        OPTIONAL MATCH (ct:Content)-[:HAS_CHUNK]->(ch)
 
-        WITH ct, max(score) AS score
+        OPTIONAL MATCH (ev:Events)-[:HAS_CHUNK]->(ch)
 
-      
-        OPTIONAL MATCH (ct)-[:REFERENCES]-(ref:Content)
+        WITH ch, score, ct, ev
 
-        WITH ct, score, collect(DISTINCT ref) AS refs
+        CALL {
 
-        
-        UNWIND ([ct] + refs) AS related_ct
-        WITH DISTINCT related_ct, max(score) as score
+            WITH ct, score
+            WHERE ct IS NOT NULL
 
-        OPTIONAL MATCH (res:Content)-[:REF_NORM]->(related_ct)
-        OPTIONAL MATCH (s:Section)-[:HAS_CONT]->(related_ct)
-        OPTIONAL MATCH (c1:Chapter)-[:HAS_CONT]->(related_ct)
-        OPTIONAL MATCH (c2:Chapter)-[:HAS_SEC]->(s)
+            WITH ct, max(score) AS score
 
-        WITH 
-            related_ct AS ct,
-            coalesce(c1, c2) AS chapter,
-            s,
-            res,
-            score
+            OPTIONAL MATCH (ct)-[:REFERENCES]-(ref:Content)
 
-        MATCH (d:Document)-[:HAS_CAP]->(chapter)
+            WITH ct, score, collect(DISTINCT ref) AS refs
 
-        RETURN
-            score,
-            ct.texto AS texto,
-            ct.tipo AS tipo,
-            ct.num AS numero,
-            res.texto AS res_texto,
-            chapter.capitulo AS capitulo,
-            s.secao AS secao,
-            d.titulo AS documento
+            UNWIND ([ct] + refs) AS related_ct
 
-        ORDER BY score DESC
+            WITH DISTINCT related_ct, score
+
+            OPTIONAL MATCH (res:Content)-[:REF_NORM]->(related_ct)
+            OPTIONAL MATCH (s:Section)-[:HAS_CONT]->(related_ct)
+            OPTIONAL MATCH (c1:Chapter)-[:HAS_CONT]->(related_ct)
+            OPTIONAL MATCH (c2:Chapter)-[:HAS_SEC]->(s)
+
+            WITH related_ct AS ct,
+                coalesce(c1, c2) AS chapter,
+                s,
+                res,
+                score
+
+            MATCH (d:Document)-[:HAS_CAP]->(chapter)
+
+            RETURN
+                score,
+                "content" AS result_type,
+                ct.texto AS texto,
+                ct.tipo AS tipo,
+                ct.num AS numero,
+                res.texto AS res_texto,
+                chapter.capitulo AS capitulo,
+                s.secao AS secao,
+                d.titulo AS documento
+
+            UNION
+
+            WITH ev, score
+            WHERE ev IS NOT NULL
+
+            MATCH (d:Document)-[:HAS_EVENT]->(ev)
+
+            RETURN
+                score,
+                "event" AS result_type,
+                ev.texto AS texto,
+                ev.categoria AS tipo,
+                null AS numero,
+                null AS res_texto,
+                ev.periodo AS capitulo,
+                ev.campus AS secao,
+                d.titulo AS documento
+        }
+
+        RETURN *
+        ORDER BY score DESC;
         """
 
         results = self.db.execute_query(cypher, parameters={"embedding": embedding, "k": self.k})
@@ -83,6 +113,22 @@ class Neo4jArticleRetriever(BaseRetriever):
         docs = []
 
         for record in results:
+            if record["result_type"] == "event":
+                docs.append(
+                Document(
+                        page_content=record["texto"],
+                        metadata={
+                            "Categoria": record["tipo"],
+                            "Periodo": record["capitulo"],
+                            "Campus": record["secao"],
+                            "Documento": record["documento"],
+                            
+                        }
+                    )
+                )
+                continue
+            
+            
             texto = record["texto"]
             if record["res_texto"]:
                 texto += "\n Esse artigo foi alterado: \n" + record["res_texto"]
@@ -151,21 +197,48 @@ class Rag:
         # )
         
         """criação do mecanismo de busca, com reranking"""
-        retriever = Neo4jArticleRetriever(embedding_model=self.embedding_model, db=self.db, k=5)
-        model = HuggingFaceCrossEncoder(model_name="BAAI/bge-reranker-base")
-        compressor = CrossEncoderReranker(model=model, top_n=5)
-        self.compression_retriever = ContextualCompressionRetriever(
-            base_compressor=compressor, base_retriever=retriever
+        retriever = Neo4jArticleRetriever(embedding_model=self.embedding_model, db=self.db, k=10)
+        modelrr = HuggingFaceCrossEncoder(
+            model_name="BAAI/bge-reranker-base"
         )
 
-        retrieve_tool = tool(response_format="content_and_artifact")(self.retrieve)
-        tools = ToolNode([retrieve_tool])
+        def rerank(inputs):
+            query = inputs["query"]
+            docs = inputs["docs"]
+
+            if not docs:
+                return []
+
+            scores = modelrr.score([
+                (query, d.page_content) for d in docs
+            ])
+
+            ranked = sorted(
+                zip(docs, scores),
+                key=lambda x: x[1],
+                reverse=True
+            )
+
+            return [doc for doc, _ in ranked[:5]]
+
+        reranker = RunnableLambda(rerank)
+
+        self.pipelinerr = (
+            {
+                "docs": retriever,
+                "query": lambda x: x
+            }
+            | reranker
+        )
+
+        self.retrieve_tool = tool(response_format="content_and_artifact")(self.retrieve)
+        tools = ToolNode([self.retrieve_tool])
 
         graph_builder = StateGraph(MessagesState)
         """monta o grafo"""
-        graph_builder.add_node(self.query_or_respond)
-        graph_builder.add_node(tools)
-        graph_builder.add_node(self.generate)
+        graph_builder.add_node("query_or_respond", self.query_or_respond)
+        graph_builder.add_node("tools", tools)
+        graph_builder.add_node("generate", self.generate)
         
 
         graph_builder.set_entry_point("query_or_respond")
@@ -195,10 +268,13 @@ class Rag:
 
     #@tool(response_format="content_and_artifact")
     def retrieve(self, query: str):
-        """Retorna as informações relacionadas com a consulta."""
+        """Retorna as informações relacionadas com a consulta. Gere uma entrada "query": "frase para busca RAG", apenas a string, sem type ou outras coisas"""
         #retrieved_docs = vector_store.similarity_search(query, k=5)
-        retrieved_docs = self.compression_retriever.invoke(query)
-
+        print(f"Retrieving documents for query: {query}")
+        retrieved_docs = self.pipelinerr.invoke(query)
+        print(f"Retrieved {len(retrieved_docs)} documents.")
+        if not retrieved_docs:
+            return "Nenhum resultado encontrado.", []
         
         serialized = "\n\n".join(
             (f"Fonte: {doc.metadata}\nConteudo: {doc.page_content}") for doc in retrieved_docs
@@ -209,9 +285,14 @@ class Rag:
 
     def query_or_respond(self,state: MessagesState):
         """Gera tool call retrieve or respond."""
-        llm_with_tools = self.llm.bind_tools([self.retrieve], tool_choice="required")
-        response = llm_with_tools.invoke(state["messages"])
-
+        llm_with_tools = self.llm.bind_tools([self.retrieve_tool])
+        system_message_content = """Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da faculdade UTFPR.
+        Sempre use as ferramentas disponíveis para buscar informações nos documentos antes de responder. A entrada é no formato "query": "frase para busca RAG", apenas a string, sem type ou outras coisas """
+        response = llm_with_tools.invoke(
+            [SystemMessage(content=system_message_content)] + state["messages"]
+        )
+        print(response)
+        print(response.tool_calls)
         return {"messages": [response]}
 
     
@@ -355,24 +436,34 @@ class Rag:
 
 
     async def answer(self,message, chat_history, session_id):
-        # config = {"configurable": {"thread_id": session_id}}
-
-        # result = self.graph.invoke(
-        #     {"messages": [{"role": "user", "content": message}]},
-        #     stream_mode="values",
-        #     config=config,
-        # )
-        # # if "used_sources" in result:
-        # #     print(result["used_sources"])
-        # contexts = result["messages"][-2].artifact
-        # #print(contexts)
-        # result_answer = result["messages"][-1].content
+        #config = {"configurable": {"thread_id": session_id}}
+        history = self.get_recent_messages(session_id)
         
-        # result = {
-        #     "answer": result_answer,
-        #     "sources": contexts
-        # }
-        # return result
+        state_messages = history + [
+            {"role": "user", "content": message}
+        ]
+        self.save_message(session_id, "user", message)
+
+        result = self.graph.invoke(
+            {"messages": state_messages},
+            stream_mode="values",
+            #config=config,
+        )
+        # if "used_sources" in result:
+        #     print(result["used_sources"])
+        contexts = result["messages"][-2].artifact
+        #print(contexts)
+        result_answer = result["messages"][-1].content
+        
+        result = {
+            "answer": result_answer,
+            "sources": contexts
+        }
+        return result
+    
+    async def answer_stream(self,message, chat_history, session_id):
+        
+        
         history = self.get_recent_messages(session_id)
         
         state_messages = history + [
@@ -457,17 +548,17 @@ class Rag:
         
         
 
-    def full_answer(self,message, chat_history, session_id):
-        config = {"configurable": {"thread_id": session_id}}
+    # def full_answer(self,message, chat_history, session_id):
+    #     config = {"configurable": {"thread_id": session_id}}
 
-        result = self.graph.invoke(
-            {"messages": [{"role": "user", "content": message}]},
-            stream_mode="values",
-            config=config,
-        )
+    #     result = self.graph.invoke(
+    #         {"messages": [{"role": "user", "content": message}]},
+    #         stream_mode="values",
+    #         config=config,
+    #     )
         
-        result_answer = result["messages"]
-        return result_answer
+    #     result_answer = result["messages"]
+    #     return result_answer
 
 
 

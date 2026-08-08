@@ -20,6 +20,9 @@ from config import UPLOAD_DIR
 from extract_info.util import retrieve_all_documents, delete_document, return_document
 from security.security import Autentify
 import os
+import logging
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class MessageRequest(BaseModel):
@@ -53,7 +56,7 @@ def get_chroma_client(host="http://localhost:8000"):
 client_chroma = get_chroma_client(chroma_url)
 
 llm = ChatOllama(model="llama3.2", temperature=0.5, base_url=ollama_url)
-model_name = "Alibaba-NLP/gte-multilingual-base"
+model_name = "intfloat/multilingual-e5-base"
 
 embeddings = HuggingFaceEmbeddings(
     model_name=model_name, 
@@ -147,7 +150,7 @@ async def upload_pdf(
     doc_type: int = Form(...),
     pai_id: str = Form(...),
     file: UploadFile = File(...),
-    user = Depends(admin_required) 
+    #user = Depends(admin_required) 
 ):
 
     # gera nome único
@@ -159,6 +162,14 @@ async def upload_pdf(
     with open(file_path, "wb") as f:
         f.write(contents)
         
+    if(doc_type == 3):
+        doc = {
+            "name": name,
+            "filename": filename,
+        }  
+        prep_doc.get_calendar_document(doc)
+        return
+    
     doc = {
         "name": name,
         "filename": filename,
@@ -195,7 +206,7 @@ def new_chat(user = Depends(get_current_user)):
     
     return {"id": session_id, "title": "Novo chat"}
 
-@app.get("/chats")
+@app.get("/chat")
 def get_chats(user = Depends(get_current_user)):
     query="""
     MATCH (u:User {id: $user_id})
@@ -275,10 +286,10 @@ def get_history(thread_id: str, user = Depends(get_current_user)):
     return result[::-1]
     
 
-@app.post("/rag/{session_id}")
+@app.post("/rag/stream/{session_id}")
 async def answer_api(session_id: str, request: MessageRequest, user = Depends(get_current_user)):
     async def event_generator():
-        async for chunk in rag.answer(
+        async for chunk in rag.answer_stream(
             request.message,
             [],
             session_id,
@@ -295,6 +306,11 @@ async def answer_api(session_id: str, request: MessageRequest, user = Depends(ge
     )
     # response = rag.full_answer(request.message, [], session_id)
     # return response
+
+@app.post("/rag/{session_id}")
+async def answer_api(session_id: str, request: MessageRequest, user = Depends(get_current_user)):
+    response = rag.answer(request.message, [], session_id)
+    return response
 
 @app.post("/docs")
 def post_docs(req: DocumentsPost, user = Depends(admin_required)):
@@ -322,7 +338,7 @@ def post_docs(req: DocumentsPost, user = Depends(admin_required)):
 def get_all_docs():
     return retrieve_all_documents(db)
 
-@app.delete("/delete_doc/{doc_id}")
+@app.delete("/docs/{doc_id}")
 def delete_doc(doc_id: str, user = Depends(admin_required)):
     paths = delete_document(db, doc_id)
     
