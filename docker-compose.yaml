@@ -16,45 +16,68 @@ services:
         ollama pull llama3.2 &&
         wait
       "
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
   neo4j:
     image: neo4j:5
     container_name: neo4j
     restart: unless-stopped
     ports:
-      - "7474:7474"  
-      - "7687:7687"  
+      - "7474:7474"
+      - "7687:7687"
     environment:
-      - NEO4J_AUTH=neo4j/12345678
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-12345678}
       - NEO4J_PLUGINS=["apoc"]
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p $${NEO4J_PASSWORD:-12345678} 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  db_init:
+    build: .
+    image: rag_utfpr:latest
+    container_name: rag_db_init
+    restart: "no"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-12345678}
+    command: python -m db.create_db
 
   rag_api:
     build: .
+    image: rag_utfpr:latest
     container_name: rag_api
     restart: unless-stopped
     depends_on:
-      - neo4j
-      - ollama
+      db_init:
+        condition: service_completed_successfully
+      ollama:
+        condition: service_started
     ports:
       - "8080:8080"
     environment:
       - OLLAMA_URL=http://ollama:11434
       - NEO4J_URI=bolt://neo4j:7687
       - NEO4J_USER=neo4j
-      - NEO4J_PASSWORD=12345678
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-12345678}
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-me}
+      - HF_HOME=/root/.cache/huggingface
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+      - uploads_data:/app/uploads
     command: uvicorn api:app --host 0.0.0.0 --port 8080
 
 volumes:
   ollama_data:
   neo4j_data:
   neo4j_logs:
+  hf_cache:
+  uploads_data:

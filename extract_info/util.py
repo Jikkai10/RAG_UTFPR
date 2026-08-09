@@ -1,118 +1,167 @@
 
 
-def dict_to_list(doc, doc_type, embed_func: callable):
-    capitulos_lista = []
+def _contentToDict(content, embedFunc: callable):
+    chunkList = [
+        {
+            "id": chunk["id"],
+            "texto": chunk["texto"],
+            "embedding": embedFunc(chunk["texto"]),
+        }
+        for chunk in content["chunks"]
+    ]
+
+    return {
+        "id": content["id"],
+        "num": content["cont_num"],
+        "tipo": content["tipo"],
+        "texto": content["texto"],
+        "pagina_inicio": content.get("pagina_inicio"),
+        "pagina_fim": content.get("pagina_fim"),
+        "bbox": content.get("bbox"),
+        "chunks": chunkList,
+    }
+
+
+def dictToList(doc, embedFunc: callable):
+    chapterList = []
     refs = []
-    for cap_id, cap in doc["capitulos"].items():
-        secoes_lista = []
-        conteudos_cap_lista = []
+    for chapterId, chapter in doc["capitulos"].items():
+        sectionList = []
+        chapterContentList = []
 
-        for sec_id, sec in cap["secoes"].items():
-            conteudos_lista = []
+        for sectionId, section in chapter["secoes"].items():
+            contentList = []
 
-            for cont_id, cont in sec["conteudos"].items():
-                chunk_lista = []
-                if doc_type == 0:
-                    for chunk in cont["chunks"]:
-                        chunk_lista.append({
-                            "id": chunk["id"],
-                            "embedding": embed_func(chunk["texto"])
-                        })
+            for contentId, content in section["conteudos"].items():
                 refs.append({
-                    "origem": cont["id"],
-                    "destino": cont.get("refs", [])
-                })
-                
-                conteudos_lista.append({
-                    "id": cont["id"],
-                    "num": cont["cont_num"],
-                    "tipo": cont["tipo"],
-                    "texto": cont["texto"],
-                    "chunks": chunk_lista,
+                    "origem": content["id"],
+                    "destino": content.get("refs", [])
                 })
 
-            secoes_lista.append({
-                "id": sec["id"],
-                "secao": sec["secao"],
-                "conteudos": conteudos_lista
+                contentList.append(_contentToDict(content, embedFunc))
+
+            sectionList.append({
+                "id": section["id"],
+                "secao": section["secao"],
+                "conteudos": contentList
             })
-        
-        for cont_id, cont in cap["conteudos"].items():
-            chunk_lista = []
-            for chunk in cont["chunks"]:
-                chunk_lista.append({
-                    "id": chunk["id"],
-                    "embedding": embed_func(chunk["texto"])
-                })
+
+        for contentId, content in chapter["conteudos"].items():
             refs.append({
-                "origem": cont["id"],
-                "destino": cont.get("refs", [])
+                "origem": content["id"],
+                "destino": content.get("refs", [])
             })
-            conteudos_cap_lista.append({
-                "id": cont["id"],
-                "tipo": cont["tipo"],
-                "num": cont["cont_num"],
-                "texto": cont["texto"],
-                "chunks": chunk_lista,
-            })
-        
-        capitulos_lista.append({
-            "id": cap["id"],
-            "capitulo": cap["capitulo"],
-            "secoes": secoes_lista,
-            "conteudos": conteudos_cap_lista
+            chapterContentList.append(_contentToDict(content, embedFunc))
+
+        chapterList.append({
+            "id": chapter["id"],
+            "capitulo": chapter["capitulo"],
+            "secoes": sectionList,
+            "conteudos": chapterContentList
         })
-    
+
     return {
         "id": doc["id"],
         "titulo": doc.get("titulo", ""),
         "path": doc.get("path", ""),
-        "capitulos": capitulos_lista,
+        "capitulos": chapterList,
         "refs": refs
     }
-    
-def insert_calendar(tx, doc):
-    query = """
-        MERGE (d:Document {id: $doc_id})
-        SET d.titulo = $doc_titulo,
-            d.path = $doc_path,
-            d.tipo = 3
 
-        WITH d
-        UNWIND $events AS event
+def insertCalendar(tx, doc):
 
-        MERGE (e:Events {id: event.id})
-        SET e.campus = event.campus,
-            e.categoria = event.categoria,
-            e.periodo = event.periodo,
-            e.texto = event.md
+    queryReset = """
+MATCH (d:Document {id: $doc_id})-[:HAS_EVENT]->(ev:Events)
 
-        MERGE (d)-[:HAS_EVENT]->(e)
+OPTIONAL MATCH (ev)-[:HAS_ITEM]->(it:EventItem)
+OPTIONAL MATCH (ev)-[:HAS_CHUNK]->(chs:Chunk)
+OPTIONAL MATCH (it)-[:HAS_CHUNK]->(chi:Chunk)
 
-        WITH e, event
-        UNWIND coalesce(event.chunks, []) AS chunk
+DETACH DELETE chi, chs, it, ev
+"""
 
-        MERGE (ch:Chunk {id: chunk.id})
-        SET ch.texto = chunk.texto,
-            ch.embedding = chunk.embedding
+    queryDoc = """
+MERGE (d:Document {id: $doc_id})
+SET d.titulo = $doc_titulo,
+    d.path = $doc_path,
+    d.tipo = 3
+"""
 
-        MERGE (e)-[:HAS_CHUNK]->(ch)
-    """
-    
-    tx.execute_query(query,
-           parameters={
-               "doc_id": doc["doc_id"],
-               "doc_titulo": doc.get("titulo", ""),
-               "doc_path": doc["path"],
-               "events": doc["parts"]
-           })
-    
-    
-    
-def inserir_estrutura(tx, doc, doc_type, doc_id = None):
-    
-    
-    query_cap = """
+    querySections = """
+MATCH (d:Document {id: $doc_id})
+UNWIND $secoes AS secao
+
+MERGE (ev:Events {id: secao.id})
+SET ev.campus = secao.campus,
+    ev.categoria = secao.categoria,
+    ev.periodo = secao.periodo,
+    ev.ano = secao.ano,
+    ev.pagina = secao.pagina,
+    ev.tipo = secao.tipo,
+    ev.texto = secao.texto
+
+MERGE (d)-[:HAS_EVENT]->(ev)
+"""
+
+    querySectionChunks = """
+UNWIND $secoes AS secao
+MATCH (ev:Events {id: secao.id})
+
+UNWIND coalesce(secao.chunks, []) AS chunk
+
+MERGE (ch:Chunk {id: chunk.id})
+SET ch:EventChunk,
+    ch.texto = chunk.texto,
+    ch.embedding = chunk.embedding
+
+MERGE (ev)-[:HAS_CHUNK]->(ch)
+"""
+
+    queryItems = """
+UNWIND $secoes AS secao
+MATCH (ev:Events {id: secao.id})
+
+UNWIND coalesce(secao.itens, []) AS item
+
+MERGE (it:EventItem {id: item.id})
+SET it.descricao = item.descricao,
+    it.dia_texto = item.dia_texto,
+    it.mes = item.mes,
+    it.mes_num = item.mes_num,
+    it.ano = item.ano,
+    it.periodo = item.periodo,
+    it.texto = item.texto,
+    it.data_inicio = CASE WHEN item.data_inicio IS NULL THEN NULL ELSE date(item.data_inicio) END,
+    it.data_fim = CASE WHEN item.data_fim IS NULL THEN NULL ELSE date(item.data_fim) END
+
+MERGE (ev)-[:HAS_ITEM]->(it)
+
+WITH it, item
+UNWIND coalesce(item.chunks, []) AS chunk
+
+MERGE (ch:Chunk {id: chunk.id})
+SET ch:EventChunk,
+    ch.texto = chunk.texto,
+    ch.embedding = chunk.embedding
+
+MERGE (it)-[:HAS_CHUNK]->(ch)
+"""
+
+    parameters = {
+        "doc_id": doc["doc_id"],
+        "doc_titulo": doc.get("titulo", ""),
+        "doc_path": doc["path"],
+        "secoes": doc["secoes"],
+    }
+
+    for query in (queryReset, queryDoc, querySections, querySectionChunks, queryItems):
+        tx.executeQuery(query, parameters=parameters)
+
+
+def insertStructure(tx, doc, docType, docId = None):
+
+
+    queryChapter = """
 MERGE (d:Document {id: $doc_id})
 SET d.titulo = $doc_titulo,
     d.path = $doc_path,
@@ -128,15 +177,21 @@ SET c.capitulo = cap.capitulo,
 MERGE (d)-[:HAS_CAP]->(c)
 """
 
-    query_norm = """
+    queryNorm = """
         MATCH (d:Document {id: $doc_id})
         MATCH (p:Document {id: $pai_id})
-        
+
         MERGE (p)-[:HAS_NORM]->(d)
     """
-    
 
-    query_cont_cap = """
+    queryResetChunks = """
+MATCH (d:Document {id: $doc_id})-[:HAS_CAP]->(:Chapter)
+      -[:HAS_SEC|HAS_CONT*1..2]->(:Content)-[:HAS_CHUNK]->(ch:Chunk)
+DETACH DELETE ch
+"""
+
+
+    queryChapterContent = """
 UNWIND $capitulos AS cap
 
 MATCH (c:Chapter {id: cap.id})
@@ -147,6 +202,9 @@ MERGE (ct:Content {id: cont.id})
 SET ct.tipo = cont.tipo,
     ct.num = cont.num,
     ct.texto = cont.texto,
+    ct.pagina_inicio = cont.pagina_inicio,
+    ct.pagina_fim = cont.pagina_fim,
+    ct.bbox = cont.bbox,
     ct.documento_id = $doc_id
 
 MERGE (c)-[:HAS_CONT]->(ct)
@@ -154,7 +212,7 @@ MERGE (c)-[:HAS_CONT]->(ct)
 
 """
 
-    query_cont_sec = """
+    querySectionContent = """
     UNWIND $capitulos AS cap
 MATCH (c:Chapter {id: cap.id})
 
@@ -173,11 +231,14 @@ MERGE (ct:Content {id: cont.id})
 SET ct.tipo = cont.tipo,
     ct.num = cont.num,
     ct.texto = cont.texto,
+    ct.pagina_inicio = cont.pagina_inicio,
+    ct.pagina_fim = cont.pagina_fim,
+    ct.bbox = cont.bbox,
     ct.documento_id = $doc_id
 
 MERGE (s)-[:HAS_CONT]->(ct)"""
 
-    query_chunk_cap = """
+    queryChapterChunk = """
 UNWIND $capitulos AS cap
 
 UNWIND coalesce(cap.conteudos, []) AS cont
@@ -186,14 +247,15 @@ MATCH (ct:Content {id: cont.id})
 UNWIND coalesce(cont.chunks, []) AS chunk
 
 MERGE (ch:Chunk {id: chunk.id})
-SET ch.texto = chunk.texto,
+SET ch:ContentChunk,
+    ch.texto = chunk.texto,
     ch.embedding = chunk.embedding
 
 MERGE (ct)-[:HAS_CHUNK]->(ch)
 
 """
 
-    query_chunk_sec = """
+    querySectionChunk = """
     UNWIND $capitulos AS cap
     UNWIND coalesce(cap.secoes, []) AS sec
 UNWIND coalesce(sec.conteudos, []) AS cont
@@ -203,13 +265,14 @@ MATCH (ct:Content {id: cont.id})
 UNWIND coalesce(cont.chunks, []) AS chunk
 
 MERGE (ch:Chunk {id: chunk.id})
-SET ch.texto = chunk.texto,
+SET ch:ContentChunk,
+    ch.texto = chunk.texto,
     ch.embedding = chunk.embedding
 
 MERGE (ct)-[:HAS_CHUNK]->(ch)
 """
 
-    query_refs = """
+    queryRefs = """
 UNWIND $refs AS ref
 
 MATCH (orig:Content {id: ref.origem})
@@ -227,7 +290,7 @@ WHERE dest IS NOT NULL
 MERGE (orig)-[:REFERENCES]->(dest)
 """
 
-    query_refs_norm = """
+    queryRefsNorm = """
 UNWIND $refs AS ref
 
 MATCH (orig:Content {id: ref.origem})
@@ -249,54 +312,59 @@ MERGE (orig)-[:REF_NORM]->(dest)
     #        doc_titulo=doc.get("titulo", ""),
     #        doc_path=doc["path"],
     #        capitulos=doc["capitulos"])
-    tx.execute_query(query_cap,
+    tx.executeQuery(queryResetChunks,
+           parameters={
+               "doc_id": doc["id"]
+           })
+    tx.executeQuery(queryChapter,
            parameters={
                "doc_id": doc["id"],
                "doc_titulo": doc.get("titulo", ""),
-               "doc_type": doc_type,
+               "doc_type": docType,
                "doc_path": doc["path"],
                "capitulos": doc["capitulos"]
            })
-    tx.execute_query(query_cont_cap,
+    tx.executeQuery(queryChapterContent,
            parameters={
                "capitulos": doc["capitulos"],
                "doc_id": doc["id"]
            })
-    tx.execute_query(query_cont_sec,
+    tx.executeQuery(querySectionContent,
            parameters={
                "capitulos": doc["capitulos"],
                "doc_id": doc["id"]
            })
-    if doc_type == 0:
-        tx.execute_query(query_refs,
+
+    tx.executeQuery(queryChapterChunk,
+        parameters={
+            "capitulos": doc["capitulos"]
+        })
+    tx.executeQuery(querySectionChunk,
+        parameters={
+            "capitulos": doc["capitulos"]
+        })
+
+    if docType == 0:
+        tx.executeQuery(queryRefs,
             parameters={
                 "refs": doc["refs"],
                 "doc_id": doc["id"]
             })
-    
-        tx.execute_query(query_chunk_cap,
-            parameters={
-                "capitulos": doc["capitulos"]
-            })
-        tx.execute_query(query_chunk_sec,
-            parameters={
-                "capitulos": doc["capitulos"]
-            })
     else:
         print(doc["refs"])
-        tx.execute_query(query_refs_norm,
+        tx.executeQuery(queryRefsNorm,
             parameters={
                 "refs": doc["refs"],
-                "doc_id": doc_id
+                "doc_id": docId
             })
-        tx.execute_query(query_norm,
+        tx.executeQuery(queryNorm,
             parameters={
                 "doc_id": doc["id"],
-                "pai_id": doc_id
+                "pai_id": docId
             })
-    
-    
-def retrieve_all_documents(tx):
+
+
+def retrieveAllDocuments(tx):
     query = """
     MATCH (d:Document)
     WHERE d.tipo <> $tipo
@@ -306,7 +374,7 @@ def retrieve_all_documents(tx):
     RETURN d, collect(n) AS norms
     """
 
-    result = tx.execute_query(query, parameters = {"tipo": 1})
+    result = tx.executeQuery(query, parameters = {"tipo": 1})
 
     docs = []
     for record in result:
@@ -319,30 +387,30 @@ def retrieve_all_documents(tx):
                     "path": norm["path"]
                 }
             )
-        
-        d = record["d"]
-        
+
+        node = record["d"]
+
         doc = {
-            "id": d["id"],
-            "titulo": d["titulo"],
-            "path": d["path"],
+            "id": node["id"],
+            "titulo": node["titulo"],
+            "path": node["path"],
             "norms": norms
         }
         docs.append(doc)
-    
+
     return docs
 
-def return_document(tx, doc_id):
+def returnDocument(tx, docId):
     query= """
     MATCH (d:Document {id: $doc_id})
-    
+
     RETURN d
     """
-    result = tx.execute_query(query, parameters = {"doc_id": doc_id})
+    result = tx.executeQuery(query, parameters = {"doc_id": docId})
     record = result[0]
     return record["d"]
 
-def delete_document(tx, doc_id):
+def deleteDocument(tx, docId):
     query = """
     MATCH (d:Document {id: $doc_id})
 
@@ -357,12 +425,12 @@ def delete_document(tx, doc_id):
 
     RETURN doc_path, norm_paths
     """
-    result = tx.execute_query(query, parameters = {"doc_id": doc_id})
-    path = []
+    result = tx.executeQuery(query, parameters = {"doc_id": docId})
+    paths = []
     record = result[0]
-    path.append(record["doc_path"])
+    paths.append(record["doc_path"])
     for norm in record["norm_paths"]:
         if norm:
-            path.append(norm)
-    print(path)
-    return path
+            paths.append(norm)
+    print(paths)
+    return paths

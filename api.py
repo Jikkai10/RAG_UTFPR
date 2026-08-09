@@ -1,24 +1,21 @@
 import json
 import mimetypes
 from typing import List
-import chromadb
-import gradio as gr
 import uuid
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uuid
 from db.connection import Neo4jConnection
 from rag import Rag
 from extract_info.extract import PrepDocs
 import requests
 from config import UPLOAD_DIR
-from extract_info.util import retrieve_all_documents, delete_document, return_document
-from security.security import Autentify
+from extract_info.util import retrieveAllDocuments, deleteDocument, returnDocument
+from security.security import Authenticator
 import os
 import logging
 
@@ -27,55 +24,33 @@ logger = logging.getLogger("uvicorn.error")
 
 class MessageRequest(BaseModel):
     message: str
-    
+
 class UserRequest(BaseModel):
     password: str
     email: str
-    
+
 class DocumentsPost(BaseModel):
     name: str
     url: str
-    doc_type: int
-    pai_id: str
-    
-ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    docType: int = Field(alias="doc_type")
+    parentId: str = Field(alias="pai_id")
 
-chroma_url = os.getenv("CHROMA_URL", "http://localhost:8000")
-def get_chroma_client(host="http://localhost:8000"):
-    try:
-        # Verifica se o servidor está respondendo
-        response = requests.get(f"{host}/api/v1/heartbeat", timeout=2)
-        if response.status_code == 200:
-            return chromadb.HttpClient(host=host)
-    except requests.exceptions.RequestException:
-        pass
+ollamaUrl = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
-    
-    return None
-
-client_chroma = get_chroma_client(chroma_url)
-
-llm = ChatOllama(model="llama3.2", temperature=0.5, base_url=ollama_url)
-model_name = "intfloat/multilingual-e5-base"
+llm = ChatOllama(model="llama3.2", temperature=0.5, base_url=ollamaUrl)
+modelName = "intfloat/multilingual-e5-base"
 
 embeddings = HuggingFaceEmbeddings(
-    model_name=model_name, 
+    model_name=modelName,
     model_kwargs={'trust_remote_code': True}
-    
+
 )
-chromadb_path = "./data" 
-vector_store = Chroma(
-    client=client_chroma,
-    collection_name="rag",
-    embedding_function=embeddings,
-    persist_directory=chromadb_path
-)    
 
-db = Neo4jConnection()    
-sec = Autentify()
+db = Neo4jConnection()
+auth = Authenticator()
 
-rag = Rag(embedding_model=embeddings, llm=llm, db=db)
-prep_doc = PrepDocs(llm=llm, embedding=embeddings)
+rag = Rag(embeddingModel=embeddings, llm=llm, db=db)
+prepDoc = PrepDocs(llm=llm, embedding=embeddings)
 
 app = FastAPI()
 
@@ -95,168 +70,147 @@ security = HTTPBearer()
 
 
 
-senha = sec.hash_password("senha")
-query = """MERGE (u:User {id: $id})
-        SET u.email = $email,
-        u.password = $password,
-        u.role = $role
-"""
+def getCurrentUser(token: HTTPAuthorizationCredentials = Depends(security)):
 
-db.execute_query(query, parameters={
-    "id": "1",
-    "email": "admin@email.com",
-    "password": senha,
-    "role": "admin"
-})
-
-db.execute_query(query, parameters={
-    "id": "2",
-    "email": "user@email.com",
-    "password": senha,
-    "role": "user"
-})
-
-def get_current_user(token: HTTPAuthorizationCredentials = Depends(security)):
-    
-    payload = sec.decode(token.credentials)
+    payload = auth.decode(token.credentials)
 
     return payload
 
-def admin_required(user = Depends(get_current_user)):
+def adminRequired(user = Depends(getCurrentUser)):
 
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
 
     return user
 
-@app.get("/download/{doc_id}")
-async def download(doc_id: str):
-    doc = return_document(db, doc_id)
+@app.get("/download/{docId}")
+async def download(docId: str, user = Depends(getCurrentUser)):
+    doc = returnDocument(db, docId)
     path = UPLOAD_DIR / doc["path"]
     name = doc["titulo"].replace(" ", "_")
-    
+
     ext = doc["path"].split('.')[-1]
-    media_type, _ = mimetypes.guess_type(path)
+    mediaType, _ = mimetypes.guess_type(path)
     return FileResponse(
         path,
-        media_type=media_type,
+        media_type=mediaType,
         filename= f'{name}.{ext}'
     )
 
 
 @app.post("/upload-pdf/")
-async def upload_pdf(
-    name: str = Form(...),          
-    doc_type: int = Form(...),
-    pai_id: str = Form(...),
+async def uploadPdf(
+    name: str = Form(...),
+    docType: int = Form(..., alias="doc_type"),
+    parentId: str = Form(..., alias="pai_id"),
     file: UploadFile = File(...),
-    #user = Depends(admin_required) 
+    user = Depends(adminRequired)
 ):
 
     # gera nome único
     filename = f"{uuid.uuid4()}.pdf"
-    file_path = UPLOAD_DIR / filename
+    filePath = UPLOAD_DIR / filename
 
     contents = await file.read()
 
-    with open(file_path, "wb") as f:
+    with open(filePath, "wb") as f:
         f.write(contents)
-        
-    if(doc_type == 3):
+
+    if(docType == 3):
         doc = {
             "name": name,
             "filename": filename,
-        }  
-        prep_doc.get_calendar_document(doc)
+        }
+        prepDoc.getCalendarDocument(doc)
         return
-    
+
     doc = {
         "name": name,
         "filename": filename,
-        "doc_id": pai_id
+        "doc_id": parentId
     }
-    
-    prep_doc.get_pdf_document(doc, doc_type)
-    
+
+    prepDoc.getPdfDocument(doc, docType)
+
 
 @app.get("/create_chat")
-def new_chat(user = Depends(get_current_user)):
+def newChat(user = Depends(getCurrentUser)):
     query = """
-    
+
     MATCH (u:User {id: $user_id})
-    
+
     CREATE (c:Chat {
         thread_id: $thread_id,
         user_id: $user_id,
         title: $title,
-        create_at: datetime()  
+        create_at: datetime()
     })
-    
-    
+
+
     MERGE (u)-[:HAS_CHAT]->(c)
     """
-    
-    session_id = str(uuid.uuid4())
-    
-    db.execute_query(query, parameters= {
-        "thread_id": session_id,
+
+    sessionId = str(uuid.uuid4())
+
+    db.executeQuery(query, parameters= {
+        "thread_id": sessionId,
         "user_id": user["sub"],
         "title": "Novo chat"
     })
-    
-    return {"id": session_id, "title": "Novo chat"}
+
+    return {"id": sessionId, "title": "Novo chat"}
 
 @app.get("/chat")
-def get_chats(user = Depends(get_current_user)):
+def getChats(user = Depends(getCurrentUser)):
     query="""
     MATCH (u:User {id: $user_id})
-    
+
     MATCH (u)-[:HAS_CHAT]->(c:Chat)
-    
+
     RETURN c.thread_id as id, c.title as title
     ORDER BY c.create_at DESC
     """
-    result = db.execute_query(query, parameters= {
+    result = db.executeQuery(query, parameters= {
         "user_id": user["sub"],
     })
-    
-    
+
+
     return result
 
-@app.delete("/chat/{thread_id}")
-def delete_chat(thread_id: str, user = Depends(get_current_user)):
+@app.delete("/chat/{threadId}")
+def deleteChat(threadId: str, user = Depends(getCurrentUser)):
     query="""
     MATCH (c:Chat {thread_id: $thread_id, user_id: $user_id})
     OPTIONAL MATCH (c)-[:HAS_MESSAGE]->(m:Message)
     DETACH DELETE c, m
     """
-    
-    db.execute_query(
+
+    db.executeQuery(
         query, parameters = {
-            "thread_id": thread_id,
+            "thread_id": threadId,
             "user_id": user["sub"]
         }
     )
-    
-@app.put("/chat/{thread_id}/{new_title}")
-def update_chat(thread_id: str, new_title: str, user = Depends(get_current_user)):
+
+@app.put("/chat/{threadId}/{newTitle}")
+def updateChat(threadId: str, newTitle: str, user = Depends(getCurrentUser)):
     query="""
     MATCH (c:Chat {thread_id: $thread_id, user_id: $user_id})
     SET c.title = $new_title
     RETURN c
     """
-    
-    db.execute_query(
+
+    db.executeQuery(
         query, parameters = {
-            "thread_id": thread_id,
+            "thread_id": threadId,
             "user_id": user["sub"],
-            "new_title": new_title
+            "new_title": newTitle
         }
     )
-    
 
-@app.get("/chat/{thread_id}")
-def get_history(thread_id: str, user = Depends(get_current_user)):
+
+@app.get("/chat/{threadId}")
+def getHistory(threadId: str, user = Depends(getCurrentUser)):
     query = """
     MATCH (c:Chat {thread_id:$thread_id, user_id:$user_id})-[:HAS_MESSAGE]->(m)
 
@@ -264,95 +218,103 @@ def get_history(thread_id: str, user = Depends(get_current_user)):
     ORDER BY m.timestamp DESC
     """
 
-    result = db.execute_query(
+    result = db.executeQuery(
         query, parameters = {
-            "thread_id": thread_id,
+            "thread_id": threadId,
             "user_id": user["sub"]
         }
     )
-    
+
     for record in result:
         if record["sources"]:
             try:
                 record["sources"] = json.loads(record["sources"])
             except:
                 record["sources"] = None
-        
+
         if len(record["sources"]) == 0:
             record["sources"] = None
-    
-    
-    
-    return result[::-1]
-    
 
-@app.post("/rag/stream/{session_id}")
-async def answer_api(session_id: str, request: MessageRequest, user = Depends(get_current_user)):
-    async def event_generator():
-        async for chunk in rag.answer_stream(
+
+
+    return result[::-1]
+
+
+@app.post("/rag/stream/{sessionId}")
+async def answerStreamApi(sessionId: str, request: MessageRequest, user = Depends(getCurrentUser)):
+    async def eventGenerator():
+        async for chunk in rag.answerStream(
             request.message,
             [],
-            session_id,
+            sessionId,
         ):
             yield chunk
 
     return StreamingResponse(
-        event_generator(),
+        eventGenerator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
         },
     )
-    # response = rag.full_answer(request.message, [], session_id)
+    # response = rag.fullAnswer(request.message, [], sessionId)
     # return response
 
-@app.post("/rag/{session_id}")
-async def answer_api(session_id: str, request: MessageRequest, user = Depends(get_current_user)):
-    response = rag.answer(request.message, [], session_id)
-    return response
+@app.post("/rag/{sessionId}")
+async def answerApi(sessionId: str, request: MessageRequest, user = Depends(getCurrentUser)):
+    response = await rag.answer(request.message, [], sessionId)
+
+    return {
+        "answer": response["answer"],
+        "sources": response["sources"]
+    }
+
+@app.post("/rag/eval/{sessionId}")
+async def answerEvalApi(sessionId: str, request: MessageRequest, user = Depends(getCurrentUser)):
+    return await rag.answer(request.message, [], sessionId, persist=False)
 
 @app.post("/docs")
-def post_docs(req: DocumentsPost, user = Depends(admin_required)):
+def postDocs(req: DocumentsPost, user = Depends(adminRequired)):
     response = requests.get(req.url)
-   
+
     if response.status_code != 200:
         return {"error": "Não foi possível baixar"}
 
     filename = f"{uuid.uuid4()}.html"
-    file_path = UPLOAD_DIR / filename
+    filePath = UPLOAD_DIR / filename
 
     # 🔥 Salva o HTML bruto
-    with open(file_path, "w", encoding="utf-8") as f:
+    with open(filePath, "w", encoding="utf-8") as f:
         f.write(response.text)
-        
+
     doc = {
         "name": req.name,
         "filename": filename,
         "url": req.url,
-        "doc_id": req.pai_id
+        "doc_id": req.parentId
     }
-    prep_doc.get_document(doc, req.doc_type)
-    
-@app.get("/all_docs")
-def get_all_docs():
-    return retrieve_all_documents(db)
+    prepDoc.getDocument(doc, req.docType)
 
-@app.delete("/docs/{doc_id}")
-def delete_doc(doc_id: str, user = Depends(admin_required)):
-    paths = delete_document(db, doc_id)
-    
+@app.get("/all_docs")
+def getAllDocs(user = Depends(getCurrentUser)):
+    return retrieveAllDocuments(db)
+
+@app.delete("/docs/{docId}")
+def deleteDoc(docId: str, user = Depends(adminRequired)):
+    paths = deleteDocument(db, docId)
+
     for path in paths:
-        file_path = UPLOAD_DIR / path
-        if file_path:
-            os.remove(file_path)
-    return {"message": f"Documento {doc_id} deletado com sucesso."}
-    
+        filePath = UPLOAD_DIR / path
+        if filePath:
+            os.remove(filePath)
+    return {"message": f"Documento {docId} deletado com sucesso."}
+
 
 @app.post("/register")
 def register(req: UserRequest):
 
-    hashed = sec.hash_password(req.password)
+    hashed = auth.hashPassword(req.password)
     query = """
         CREATE (u:User {
             id: $id,
@@ -361,8 +323,8 @@ def register(req: UserRequest):
             role: $role
         })
         """
-    
-    db.execute_query(query, parameters={
+
+    db.executeQuery(query, parameters={
             "id": str(uuid.uuid4()),
             "email": req.email,
             "password": hashed,
@@ -377,18 +339,18 @@ def login(req: UserRequest):
         MATCH (u:User {email:$email})
         RETURN u.password AS password, u.id AS id, u.role AS role, u.email as email
         """
-        
-    record = db.execute_query(query, parameters={"email": req.email})
+
+    record = db.executeQuery(query, parameters={"email": req.email})
     if record:
         record = record[0]
-    
+
     if not record:
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
 
-    if not sec.verify_password(req.password, record["password"]):
+    if not auth.verifyPassword(req.password, record["password"]):
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
 
-    token = sec.create_access_token({
+    token = auth.createAccessToken({
         "sub": str(record["id"]),
         "role": record["role"],
         "email": record["email"]
@@ -401,9 +363,9 @@ def login(req: UserRequest):
             "role": record["role"]
         }
     }
-    
+
 @app.get("/me")
-def me(user = Depends(get_current_user)):
+def me(user = Depends(getCurrentUser)):
     return {
         "email": user["email"],
         "role": user["role"]
