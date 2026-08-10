@@ -242,10 +242,12 @@ def getHistory(threadId: str, user = Depends(getCurrentUser)):
 
 @app.post("/rag/stream/{sessionId}")
 async def answerStreamApi(sessionId: str, request: MessageRequest, user = Depends(getCurrentUser)):
+    chatHistory = rag.getRecentMessages(sessionId)
+
     async def eventGenerator():
         async for chunk in rag.answerStream(
             request.message,
-            [],
+            chatHistory,
             sessionId,
         ):
             yield chunk
@@ -284,7 +286,6 @@ def postDocs(req: DocumentsPost, user = Depends(adminRequired)):
     filename = f"{uuid.uuid4()}.html"
     filePath = UPLOAD_DIR / filename
 
-    # 🔥 Salva o HTML bruto
     with open(filePath, "w", encoding="utf-8") as f:
         f.write(response.text)
 

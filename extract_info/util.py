@@ -394,6 +394,7 @@ def retrieveAllDocuments(tx):
             "id": node["id"],
             "titulo": node["titulo"],
             "path": node["path"],
+            "tipo": node["tipo"],
             "norms": norms
         }
         docs.append(doc)

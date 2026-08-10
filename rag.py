@@ -183,7 +183,7 @@ class Neo4jArticleRetriever(BaseRetriever):
                         "source_type": "regulamento",
                         "Artigo": record["numero"] if contentType == "artigo" else None,
                         "Capitulo": record["capitulo"],
-                        "Seção": record["secao"] if record["secao"] else None,
+                        "Secao": record["secao"] if record["secao"] else None,
                         "Documento": record["documento"],
                         "Pagina": record["pagina"],
 
