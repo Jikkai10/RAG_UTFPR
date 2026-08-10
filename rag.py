@@ -606,7 +606,7 @@ class Rag:
 
         return history
 
-    def saveMessage(self, threadId, role, content, sources = []):
+    def saveMessage(self, threadId, role, content, sources = [], contexts = []):
 
         query = """
         MERGE (c:Chat {thread_id:$thread_id})
@@ -616,6 +616,7 @@ class Rag:
             role: $role,
             content: $content,
             sources: $sources,
+            contexts: $contexts,
             timestamp: datetime()
         })
 
@@ -627,7 +628,8 @@ class Rag:
                 "thread_id": threadId,
                 "role": role,
                 "content": content,
-                "sources": sources
+                "sources": sources,
+                "contexts": contexts
             }
         )
 
@@ -775,7 +777,13 @@ class Rag:
         sources = await self.usedSources(fullAnswer, candidates)
 
         if persist:
-            self.saveMessage(sessionId, "assistant", fullAnswer, sources=json.dumps(sources))
+            self.saveMessage(
+                sessionId,
+                "assistant",
+                fullAnswer,
+                sources=json.dumps(sources),
+                contexts=json.dumps(candidates)
+            )
 
         yield ("contexts", candidates)
 

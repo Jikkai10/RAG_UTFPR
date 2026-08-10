@@ -214,7 +214,8 @@ def getHistory(threadId: str, user = Depends(getCurrentUser)):
     query = """
     MATCH (c:Chat {thread_id:$thread_id, user_id:$user_id})-[:HAS_MESSAGE]->(m)
 
-    RETURN m.role as role, m.content as content, m.sources as sources
+    RETURN m.role as role, m.content as content, m.sources as sources,
+           m.contexts as contexts
     ORDER BY m.timestamp DESC
     """
 
@@ -226,16 +227,16 @@ def getHistory(threadId: str, user = Depends(getCurrentUser)):
     )
 
     for record in result:
-        if record["sources"]:
-            try:
-                record["sources"] = json.loads(record["sources"])
-            except:
-                record["sources"] = None
+        for field in ("sources", "contexts"):
+            value = record[field]
 
-        if len(record["sources"]) == 0:
-            record["sources"] = None
+            if isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except json.JSONDecodeError:
+                    value = None
 
-
+            record[field] = value or None
 
     return result[::-1]
 
