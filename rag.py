@@ -817,6 +817,12 @@ class Rag:
                     f"data: {json.dumps(payload)}\n\n"
                 )
 
+            elif kind == "contexts":
+                yield (
+                    f"event: contexts\n"
+                    f"data: {json.dumps(payload)}\n\n"
+                )
+
             elif kind == "sources":
                 yield (
                     f"event: sources\n"
