@@ -71,6 +71,9 @@ def judgeApiKey():
     return value
 
 
+metricsCache = None
+
+
 def buildMetrics():
 
     llm = llm_factory(
@@ -104,6 +107,16 @@ def buildMetrics():
     ]
 
 
+def getMetrics():
+    """Reaproveita as métricas entre chamadas: carregar o modelo de embedding é caro."""
+    global metricsCache
+
+    if metricsCache is None:
+        metricsCache = buildMetrics()
+
+    return metricsCache
+
+
 def formatContext(doc):
 
     metadata = ", ".join(
@@ -113,6 +126,17 @@ def formatContext(doc):
     )
 
     return f"Fonte: {metadata}\nConteudo: {doc.get('content', '')}"
+
+
+def buildDataRow(question, groundTruth, result):
+    """Monta uma linha do data.json a partir da resposta do RAG."""
+    return {
+        "question": question,
+        "answer": result["answer"],
+        "contexts_all": [formatContext(doc) for doc in result.get("contexts") or []],
+        "contexts_cited": [formatContext(doc) for doc in result.get("sources") or []],
+        "ground_truth": groundTruth,
+    }
 
 
 def login(session):
@@ -153,15 +177,9 @@ def makeData():
                 f"({response.status_code}): {response.text}"
             )
 
-        result = response.json()
-
-        data.append({
-            "question": item["question"],
-            "answer": result["answer"],
-            "contexts_all": [formatContext(doc) for doc in result["contexts"]],
-            "contexts_cited": [formatContext(doc) for doc in result["sources"]],
-            "ground_truth": item["ground_truth"],
-        })
+        data.append(
+            buildDataRow(item["question"], item["ground_truth"], response.json())
+        )
 
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
@@ -174,9 +192,11 @@ def loadData():
         return json.load(f)
 
 
-def toRagasRows(data):
+def toRagasRows(data, contextSource=None):
 
-    key = "contexts_cited" if CONTEXT_SOURCE == "cited" else "contexts_all"
+    contextSource = contextSource or CONTEXT_SOURCE
+
+    key = "contexts_cited" if contextSource == "cited" else "contexts_all"
 
     return [
         {
@@ -239,50 +259,51 @@ async def scoreAll(rows, metrics):
     ])
 
 
+async def scoreData(data, contextSource=None):
+    """Pontua uma lista de exemplos já respondidos e devolve as médias e o detalhe."""
+    contextSource = contextSource or CONTEXT_SOURCE
+
+    rows = toRagasRows(data, contextSource)
+    metrics = getMetrics()
+
+    scores = await scoreAll(rows, metrics)
+
+    media = {
+        metric.name: float(np.nanmean([score[metric.name] for score in scores]))
+        for metric, _ in metrics
+    }
+
+    return {
+        "judge_model": JUDGE_MODEL,
+        "context_source": contextSource,
+        "n_examples": len(rows),
+        "media": {name: jsonNumber(value) for name, value in media.items()},
+        "por_exemplo": [
+            {
+                "question": row["user_input"],
+                **{name: jsonNumber(value) for name, value in score.items()},
+            }
+            for row, score in zip(rows, scores)
+        ],
+    }
+
+
 def runEval():
     data = loadData()
 
     if not data:
         raise RuntimeError(f"{DATA_FILE.name} está vazio")
 
-    rows = toRagasRows(data)
-    metrics = buildMetrics()
-
-    scores = asyncio.run(scoreAll(rows, metrics))
-
-    finalResult = {
-        metric.name: float(np.nanmean([score[metric.name] for score in scores]))
-        for metric, _ in metrics
-    }
+    result = asyncio.run(scoreData(data))
 
     with open(RESULTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "judge_model": JUDGE_MODEL,
-                "context_source": CONTEXT_SOURCE,
-                "n_examples": len(rows),
-                "media": {
-                    name: jsonNumber(value) for name, value in finalResult.items()
-                },
-                "por_exemplo": [
-                    {
-                        "question": row["user_input"],
-                        **{name: jsonNumber(value) for name, value in score.items()},
-                    }
-                    for row, score in zip(rows, scores)
-                ],
-            },
-            f,
-            ensure_ascii=False,
-            indent=4,
-            allow_nan=False,
-        )
+        json.dump(result, f, ensure_ascii=False, indent=4, allow_nan=False)
 
-    print(f"\nMédia ({len(rows)} exemplos, contextos: {CONTEXT_SOURCE}):")
-    for name, value in finalResult.items():
-        print(f"  {name}: {value:.4f}")
+    print(f"\nMédia ({result['n_examples']} exemplos, contextos: {result['context_source']}):")
+    for name, value in result["media"].items():
+        print(f"  {name}: {'nan' if value is None else f'{value:.4f}'}")
 
-    return finalResult
+    return result["media"]
 
 
 if __name__ == "__main__":

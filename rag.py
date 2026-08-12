@@ -228,9 +228,6 @@ class Neo4jEventRetriever(BaseRetriever):
         embedding = self.embeddingModel.embed_query(query)
         term, year = normalizeTerm(term, year)
 
-        # O chunk continua sendo um evento isolado, mas a unidade devolvida e o
-        # mes inteiro — assim como no retriever de artigos o chunk busca e o
-        # Content responde.
         cypher = """
         CALL db.index.vector.queryNodes(
             'event_chunk_embedding',

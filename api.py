@@ -15,6 +15,7 @@ import requests
 from config import UPLOAD_DIR, buildEmbeddings
 from extract_info.util import retrieveAllDocuments, deleteDocument, returnDocument
 from security.security import Authenticator
+from evaluate import buildDataRow, scoreData
 import os
 import logging
 
@@ -34,9 +35,24 @@ class DocumentsPost(BaseModel):
     docType: int = Field(alias="doc_type")
     parentId: str = Field(alias="pai_id")
 
+class EvalQuestion(BaseModel):
+    question: str
+    groundTruth: str = Field(alias="ground_truth")
+
+class EvalDataRow(BaseModel):
+    question: str
+    answer: str
+    contextsAll: List[str] = Field(default_factory=list, alias="contexts_all")
+    contextsCited: List[str] = Field(default_factory=list, alias="contexts_cited")
+    groundTruth: str = Field(alias="ground_truth")
+
+class EvalScoreRequest(BaseModel):
+    data: List[EvalDataRow]
+    contextSource: str | None = Field(default=None, alias="context_source")
+
 ollamaUrl = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
-llm = ChatOllama(model="llama3.2", temperature=0.5, base_url=ollamaUrl)
+llm = ChatOllama(model="llama3.1", temperature=0.5, base_url=ollamaUrl)
 
 embeddings = buildEmbeddings()
 
@@ -270,6 +286,31 @@ async def answerApi(sessionId: str, request: MessageRequest, user = Depends(getC
 @app.post("/rag/eval/{sessionId}")
 async def answerEvalApi(sessionId: str, request: MessageRequest, user = Depends(getCurrentUser)):
     return await rag.answer(request.message, [], sessionId, persist=False)
+
+@app.post("/evaluate/data")
+async def makeEvalData(questions: List[EvalQuestion], user = Depends(adminRequired)):
+    """Responde cada pergunta com o RAG e devolve o dataset pronto para pontuar."""
+    data = []
+
+    for position, item in enumerate(questions, start=1):
+        logger.info(f"[{position}/{len(questions)}] {item.question}")
+
+        result = await rag.answer(item.question, [], str(uuid.uuid4()), persist=False)
+
+        data.append(buildDataRow(item.question, item.groundTruth, result))
+
+    return data
+
+@app.post("/evaluate/score")
+async def scoreEvalData(request: EvalScoreRequest, user = Depends(adminRequired)):
+    """Recebe o dataset gerado em /evaluate/data e devolve as métricas do ragas."""
+    if not request.data:
+        raise HTTPException(status_code=400, detail="data está vazio")
+
+    return await scoreData(
+        [row.model_dump(by_alias=True) for row in request.data],
+        contextSource=request.contextSource,
+    )
 
 @app.post("/docs")
 def postDocs(req: DocumentsPost, user = Depends(adminRequired)):
