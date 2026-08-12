@@ -26,6 +26,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv(BASE_DIR / ".env")
 
+from config import EMBEDDING_MODEL as DEFAULT_EMBEDDING_MODEL, QUERY_PREFIX
 from openai import AsyncOpenAI
 from ragas.embeddings import HuggingFaceEmbeddings
 from ragas.llms import llm_factory
@@ -46,7 +47,7 @@ CONTEXT_SOURCE = os.getenv("EVAL_CONTEXT_SOURCE", "all")
 
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", "openai/gpt-4o-mini")
 JUDGE_BASE_URL = os.getenv("JUDGE_BASE_URL", "https://models.github.ai/inference")
-EMBEDDING_MODEL = os.getenv("EVAL_EMBEDDING_MODEL", "Alibaba-NLP/gte-multilingual-base")
+EMBEDDING_MODEL = os.getenv("EVAL_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
 
 CONCURRENCY = int(os.getenv("EVAL_CONCURRENCY", "2"))
 MAX_RETRIES = 5
@@ -80,9 +81,19 @@ def buildMetrics():
             timeout=REQUEST_TIMEOUT,
         ),
     )
+    # O AnswerRelevancy compara pergunta com pergunta, então é uso simétrico:
+    # os dois lados entram com o prefixo de query do e5. Outros modelos indicados
+    # via EVAL_EMBEDDING_MODEL não usam prefixo.
+    promptKwargs = (
+        {"prompts": {"query": QUERY_PREFIX}, "default_prompt_name": "query"}
+        if "e5" in EMBEDDING_MODEL.lower()
+        else {}
+    )
+
     embeddings = HuggingFaceEmbeddings(
         model=EMBEDDING_MODEL,
         trust_remote_code=True,
+        **promptKwargs,
     )
 
     return [

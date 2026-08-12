@@ -5,7 +5,6 @@ import uuid
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
 from pydantic import BaseModel, Field
 import uuid
@@ -13,7 +12,7 @@ from db.connection import Neo4jConnection
 from rag import Rag
 from extract_info.extract import PrepDocs
 import requests
-from config import UPLOAD_DIR
+from config import UPLOAD_DIR, buildEmbeddings
 from extract_info.util import retrieveAllDocuments, deleteDocument, returnDocument
 from security.security import Authenticator
 import os
@@ -38,13 +37,8 @@ class DocumentsPost(BaseModel):
 ollamaUrl = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
 llm = ChatOllama(model="llama3.2", temperature=0.5, base_url=ollamaUrl)
-modelName = "intfloat/multilingual-e5-base"
 
-embeddings = HuggingFaceEmbeddings(
-    model_name=modelName,
-    model_kwargs={'trust_remote_code': True}
-
-)
+embeddings = buildEmbeddings()
 
 db = Neo4jConnection()
 auth = Authenticator()

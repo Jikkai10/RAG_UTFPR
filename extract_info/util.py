@@ -70,14 +70,19 @@ def dictToList(doc, embedFunc: callable):
 
 def insertCalendar(tx, doc):
 
+    # it_antigo cobre os calendarios gravados antes do EventMonth, quando o
+    # item ficava pendurado direto na secao.
     queryReset = """
 MATCH (d:Document {id: $doc_id})-[:HAS_EVENT]->(ev:Events)
 
-OPTIONAL MATCH (ev)-[:HAS_ITEM]->(it:EventItem)
+OPTIONAL MATCH (ev)-[:HAS_MONTH]->(mes:EventMonth)
+OPTIONAL MATCH (mes)-[:HAS_ITEM]->(it:EventItem)
+OPTIONAL MATCH (ev)-[:HAS_ITEM]->(it_antigo:EventItem)
 OPTIONAL MATCH (ev)-[:HAS_CHUNK]->(chs:Chunk)
 OPTIONAL MATCH (it)-[:HAS_CHUNK]->(chi:Chunk)
+OPTIONAL MATCH (it_antigo)-[:HAS_CHUNK]->(chi_antigo:Chunk)
 
-DETACH DELETE chi, chs, it, ev
+DETACH DELETE chi, chi_antigo, chs, it, it_antigo, mes, ev
 """
 
     queryDoc = """
@@ -117,11 +122,30 @@ SET ch:EventChunk,
 MERGE (ev)-[:HAS_CHUNK]->(ch)
 """
 
-    queryItems = """
+    queryMonths = """
 UNWIND $secoes AS secao
 MATCH (ev:Events {id: secao.id})
 
-UNWIND coalesce(secao.itens, []) AS item
+UNWIND coalesce(secao.meses, []) AS mes
+
+MERGE (mo:EventMonth {id: mes.id})
+SET mo.mes = mes.mes,
+    mo.mes_num = mes.mes_num,
+    mo.ano = mes.ano,
+    mo.periodo = mes.periodo,
+    mo.dias_letivos = mes.dias_letivos,
+    mo.texto = mes.texto
+
+MERGE (ev)-[:HAS_MONTH]->(mo)
+"""
+
+    queryItems = """
+UNWIND $secoes AS secao
+UNWIND coalesce(secao.meses, []) AS mes
+
+MATCH (mo:EventMonth {id: mes.id})
+
+UNWIND coalesce(mes.itens, []) AS item
 
 MERGE (it:EventItem {id: item.id})
 SET it.descricao = item.descricao,
@@ -134,7 +158,7 @@ SET it.descricao = item.descricao,
     it.data_inicio = CASE WHEN item.data_inicio IS NULL THEN NULL ELSE date(item.data_inicio) END,
     it.data_fim = CASE WHEN item.data_fim IS NULL THEN NULL ELSE date(item.data_fim) END
 
-MERGE (ev)-[:HAS_ITEM]->(it)
+MERGE (mo)-[:HAS_ITEM]->(it)
 
 WITH it, item
 UNWIND coalesce(item.chunks, []) AS chunk
@@ -154,7 +178,8 @@ MERGE (it)-[:HAS_CHUNK]->(ch)
         "secoes": doc["secoes"],
     }
 
-    for query in (queryReset, queryDoc, querySections, querySectionChunks, queryItems):
+    for query in (queryReset, queryDoc, querySections, querySectionChunks,
+                  queryMonths, queryItems):
         tx.executeQuery(query, parameters=parameters)
 
 
@@ -418,7 +443,7 @@ def deleteDocument(tx, docId):
     OPTIONAL MATCH (d)-[:HAS_NORM]->(n)
     WITH d, d.path AS doc_path, collect(DISTINCT n.path) AS norm_paths
 
-    OPTIONAL MATCH (d)-[:HAS_NORM|HAS_CAP|HAS_SEC|HAS_CONT|HAS_CHUNK*1..5]->(sub)
+    OPTIONAL MATCH (d)-[:HAS_NORM|HAS_CAP|HAS_SEC|HAS_CONT|HAS_EVENT|HAS_MONTH|HAS_ITEM|HAS_CHUNK*1..5]->(sub)
     WITH doc_path, norm_paths, collect(DISTINCT sub) + collect(d) AS nodes
 
     UNWIND nodes AS node

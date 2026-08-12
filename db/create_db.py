@@ -90,6 +90,12 @@ FOR (ev:Events)
 REQUIRE ev.id IS UNIQUE;
 """
 
+queryConstraintsEventMonth = """
+CREATE CONSTRAINT event_month_unique IF NOT EXISTS
+FOR (mo:EventMonth)
+REQUIRE mo.id IS UNIQUE;
+"""
+
 queryConstraintsEventItem = """
 CREATE CONSTRAINT event_item_unique IF NOT EXISTS
 FOR (it:EventItem)
@@ -106,22 +112,34 @@ queryPurgeCalendars = """
 MATCH (d:Document {tipo: 3})
 
 OPTIONAL MATCH (d)-[:HAS_EVENT]->(ev:Events)
-OPTIONAL MATCH (ev)-[:HAS_ITEM]->(it:EventItem)
+OPTIONAL MATCH (ev)-[:HAS_MONTH]->(mo:EventMonth)
+OPTIONAL MATCH (ev)-[:HAS_ITEM|HAS_MONTH*1..2]->(it:EventItem)
 OPTIONAL MATCH (ev)-[:HAS_CHUNK]->(chs:Chunk)
 OPTIONAL MATCH (it)-[:HAS_CHUNK]->(chi:Chunk)
 
-DETACH DELETE chi, chs, it, ev, d
+DETACH DELETE chi, chs, it, mo, ev, d
 """
 
 queryPurgeOrphans = """
 MATCH (ev:Events)
 WHERE NOT (:Document)-[:HAS_EVENT]->(ev)
 
-OPTIONAL MATCH (ev)-[:HAS_ITEM]->(it:EventItem)
+OPTIONAL MATCH (ev)-[:HAS_MONTH]->(mo:EventMonth)
+OPTIONAL MATCH (ev)-[:HAS_ITEM|HAS_MONTH*1..2]->(it:EventItem)
 OPTIONAL MATCH (ev)-[:HAS_CHUNK]->(chs:Chunk)
 OPTIONAL MATCH (it)-[:HAS_CHUNK]->(chi:Chunk)
 
-DETACH DELETE chi, chs, it, ev
+DETACH DELETE chi, chs, it, mo, ev
+"""
+
+queryPurgeOrphanMonths = """
+MATCH (mo:EventMonth)
+WHERE NOT (:Events)-[:HAS_MONTH]->(mo)
+
+OPTIONAL MATCH (mo)-[:HAS_ITEM]->(it:EventItem)
+OPTIONAL MATCH (it)-[:HAS_CHUNK]->(chi:Chunk)
+
+DETACH DELETE chi, it, mo
 """
 
 
@@ -153,6 +171,7 @@ SCHEMA_QUERIES = [
     (queryIndexContent, "Content vector index"),
     (queryIndexEvent, "Event vector index"),
     (queryConstraintsEvents, "Events constraints"),
+    (queryConstraintsEventMonth, "EventMonth constraints"),
     (queryConstraintsEventItem, "EventItem constraints"),
     (queryIndexEventDate, "EventItem date index"),
     (queryConstraintsUser, "User constraints"),
@@ -179,6 +198,7 @@ def purgeCalendars(db):
 
     db.executeQuery(queryPurgeCalendars)
     db.executeQuery(queryPurgeOrphans)
+    db.executeQuery(queryPurgeOrphanMonths)
 
     print(f"{sectionsBefore} secoes de calendario apagadas. Reenvie os PDFs de calendario.")
 
@@ -213,7 +233,8 @@ if __name__ == "__main__":
         "--purge-calendars",
         dest="purgeCalendars",
         action="store_true",
-        help="APAGA os calendarios (Events, EventItem e seus chunks) e os Documents tipo 3. "
+        help="APAGA os calendarios (Events, EventMonth, EventItem e seus chunks) e os "
+             "Documents tipo 3. "
              "Os regulamentos ficam. Use uma vez para limpar as secoes gravadas com o id "
              "antigo, e reenvie os PDFs de calendario depois.",
     )

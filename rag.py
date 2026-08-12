@@ -19,6 +19,8 @@ from typing import List, Optional
 #import numpy as np
 from pydantic import BaseModel, Field
 import logging
+from datetime import datetime
+from config import RERANKER_MODEL
 
 
 FETCH_MULTIPLIER = 5
@@ -29,7 +31,22 @@ REF_SCORE_DECAY = 0.8
 
 MAX_ROUNDS = 3
 
-MIN_RERANK_SCORE = 0.05
+# Piso absoluto: só descarta o lote quando nada é minimamente relevante.
+MIN_RERANK_SCORE = 0.01
+
+# Piso relativo ao melhor score do lote. Os scores do reranker variam muito de
+# consulta para consulta, então um corte fixo alto zera consultas legítimas.
+RERANK_SCORE_RATIO = 0.1
+
+# O calendário devolve o mês inteiro, não um evento solto: cada documento já
+# traz dezenas de linhas, então poucos bastam para responder.
+EVENT_K = 5
+
+EVENT_TOP_N = 3
+
+# Independente do k: os chunks recuperados se agrupam em poucos meses (um mês
+# cheio sozinho consome vários), então a busca vetorial precisa continuar larga.
+EVENT_FETCH_K = 50
 
 TERM_INPUT_PATTERNS = (
     re.compile(r"(?:^|/)\s*([1-4])\s*[ºo]?\s*$"),
@@ -198,6 +215,7 @@ class Neo4jEventRetriever(BaseRetriever):
     embeddingModel: any
     db: any
     k: int = 5
+    fetchK: int = EVENT_FETCH_K
 
     def search(
         self,
@@ -210,6 +228,9 @@ class Neo4jEventRetriever(BaseRetriever):
         embedding = self.embeddingModel.embed_query(query)
         term, year = normalizeTerm(term, year)
 
+        # O chunk continua sendo um evento isolado, mas a unidade devolvida e o
+        # mes inteiro — assim como no retriever de artigos o chunk busca e o
+        # Content responde.
         cypher = """
         CALL db.index.vector.queryNodes(
             'event_chunk_embedding',
@@ -219,36 +240,41 @@ class Neo4jEventRetriever(BaseRetriever):
         YIELD node AS ch, score
 
         OPTIONAL MATCH (it:EventItem)-[:HAS_CHUNK]->(ch)
+        OPTIONAL MATCH (mes:EventMonth)-[:HAS_ITEM]->(it)
         OPTIONAL MATCH (ev_secao:Events)-[:HAS_CHUNK]->(ch)
-        OPTIONAL MATCH (ev_item:Events)-[:HAS_ITEM]->(it)
+        OPTIONAL MATCH (ev_mes:Events)-[:HAS_MONTH]->(mes)
 
-        WITH ch, score, it, coalesce(ev_secao, ev_item) AS ev
+        WITH ch, score, mes, coalesce(ev_secao, ev_mes) AS ev
         WHERE ev IS NOT NULL
-          AND ($periodo IS NULL OR coalesce(it.periodo, ev.periodo) = $periodo)
-          AND ($ano IS NULL OR coalesce(it.ano, ev.ano) = $ano)
+          AND ($periodo IS NULL OR coalesce(mes.periodo, ev.periodo) = $periodo)
+          AND ($ano IS NULL OR coalesce(mes.ano, ev.ano) = $ano)
           AND ($campus IS NULL OR toLower(coalesce(ev.campus, '')) CONTAINS toLower($campus))
 
-        WITH coalesce(it, ev) AS alvo, it, ev, ch, score
-        ORDER BY score DESC
-
-        WITH alvo, it, ev, max(score) AS score, head(collect(ch.texto)) AS chunk_texto
+        WITH coalesce(mes, ev) AS alvo, mes, ev, max(score) AS score
         ORDER BY score DESC
         LIMIT $k
 
+        OPTIONAL MATCH (alvo)-[:HAS_ITEM]->(item:EventItem)
+
+        WITH alvo, mes, ev, score,
+            min(item.data_inicio) AS data_inicio,
+            max(item.data_fim) AS data_fim
+
         OPTIONAL MATCH (d:Document)-[:HAS_EVENT]->(ev)
 
-        WITH alvo, it, ev, score, chunk_texto, head(collect(d.titulo)) AS documento
+        WITH alvo, mes, ev, score, data_inicio, data_fim,
+            head(collect(d.titulo)) AS documento
 
         RETURN
             score,
             alvo.id AS id,
-            coalesce(chunk_texto, alvo.texto) AS texto,
-            it.texto AS item,
-            toString(it.data_inicio) AS data_inicio,
-            toString(it.data_fim) AS data_fim,
-            it.mes AS mes,
-            coalesce(it.periodo, ev.periodo) AS periodo,
-            coalesce(it.ano, ev.ano) AS ano,
+            alvo.texto AS texto,
+            toString(data_inicio) AS data_inicio,
+            toString(data_fim) AS data_fim,
+            mes.mes AS mes,
+            mes.dias_letivos AS dias_letivos,
+            coalesce(mes.periodo, ev.periodo) AS periodo,
+            coalesce(mes.ano, ev.ano) AS ano,
             ev.categoria AS categoria,
             ev.campus AS campus,
             documento
@@ -258,7 +284,7 @@ class Neo4jEventRetriever(BaseRetriever):
         results = self.db.executeQuery(cypher, parameters={
             "embedding": embedding,
             "k": self.k,
-            "fetch_k": self.k * FETCH_MULTIPLIER,
+            "fetch_k": self.fetchK,
             "periodo": term,
             "campus": campus or None,
             "ano": year,
@@ -277,8 +303,9 @@ class Neo4jEventRetriever(BaseRetriever):
                     metadata={
                         "id": record["id"],
                         "source_type": "calendario",
-                        "Data": formatDate(record["data_inicio"], record["data_fim"]),
+                        "Datas": formatDate(record["data_inicio"], record["data_fim"]),
                         "Mes": record["mes"],
+                        "Dias letivos": record["dias_letivos"],
                         "Categoria": record["categoria"],
                         "Periodo": f"{record['periodo']}º" if record["periodo"] else None,
                         "Ano": record["ano"],
@@ -345,10 +372,10 @@ class Rag:
             embeddingModel=self.embeddingModel, db=self.db, k=10
         )
         self.eventRetriever = Neo4jEventRetriever(
-            embeddingModel=self.embeddingModel, db=self.db, k=10
+            embeddingModel=self.embeddingModel, db=self.db, k=EVENT_K
         )
         self.rerankerModel = HuggingFaceCrossEncoder(
-            model_name="BAAI/bge-reranker-base"
+            model_name=RERANKER_MODEL
         )
 
         self.tools = [
@@ -391,6 +418,7 @@ class Rag:
         docs: List[Document],
         topN: int = 5,
         minScore: float = MIN_RERANK_SCORE,
+        ratio: float = RERANK_SCORE_RATIO,
     ) -> List[Document]:
 
         if not docs:
@@ -406,7 +434,9 @@ class Rag:
             reverse=True
         )
 
-        return [doc for doc, score in ranked[:topN] if score >= minScore]
+        floor = max(minScore, ranked[0][1] * ratio)
+
+        return [doc for doc, score in ranked[:topN] if score >= floor]
 
     def docLabel(self, doc: Document) -> str:
 
@@ -468,7 +498,9 @@ class Rag:
         Só filtre pelo que a pergunta disser: filtro errado devolve zero resultados."""
         print(f"Retrieving calendar events for query: {query} (term={term}, campus={campus}, year={year})")
         retrievedDocs = self.rerank(
-            query, self.eventRetriever.search(query, term=term, campus=campus, year=year)
+            query,
+            self.eventRetriever.search(query, term=term, campus=campus, year=year),
+            topN=EVENT_TOP_N,
         )
         print(f"Retrieved {len(retrievedDocs)} calendar documents.")
         if not retrievedDocs:
@@ -479,7 +511,10 @@ class Rag:
 
     def queryOrRespond(self, state: MyState):
         llmWithTools = self.llm.bind_tools(self.tools)
-        systemMessageContent = """Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da faculdade UTFPR.
+        date = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        systemMessageContent = f"""
+        Data atual: {date}\n\n
+        Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da faculdade UTFPR.
 
         Você tem duas ferramentas de busca:
         - searchRegulations: regras, direitos, deveres, critérios e prazos previstos em regulamentos e normas.
@@ -541,7 +576,11 @@ class Rag:
 
 
         # )
-        systemMessageContent = ("""
+        #print(docsContent)
+        date = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        systemMessageContent = (
+        f"""
+        Data atual: {date}\n\n
         Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da UTFPR.
         Os documentos abaixo apresentam as fontes atualizadas e devem ser consideradas como verdade.
         Cada documento está numerado. Cite a fonte de cada afirmação com o marcador [n] correspondente, logo depois da informação.
@@ -552,9 +591,10 @@ class Rag:
 
         Documentos:
         \n\n
+        {docsContent}
         """
-        f"{docsContent}"
         )
+        #print(systemMessageContent)
 
 
         messages = state["messages"]
@@ -573,7 +613,7 @@ class Rag:
             or (message.type == "ai" and not message.tool_calls)
         ]
         prompt = [SystemMessage(systemMessageContent)] + conversationMessages
-
+       
         async for chunk in self.llm.astream(prompt):
             yield {
                 "messages": [chunk]
