@@ -50,8 +50,16 @@ JUDGE_BASE_URL = os.getenv("JUDGE_BASE_URL", "https://models.github.ai/inference
 EMBEDDING_MODEL = os.getenv("EVAL_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
 
 CONCURRENCY = int(os.getenv("EVAL_CONCURRENCY", "2"))
-MAX_RETRIES = 5
+MAX_RETRIES = 3
 REQUEST_TIMEOUT = 600
+
+# O padrão do ragas é 1024, que estoura em modelos de raciocínio (gpt-oss): o
+# reasoning consome a cota e o JSON sai truncado.
+JUDGE_MAX_TOKENS = 8192
+
+# Mesmo modelo e URL de api.py: o descarregamento é por modelo carregado.
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1")
 
 
 def requireEnv(name):
@@ -83,6 +91,7 @@ def buildMetrics():
             base_url=JUDGE_BASE_URL,
             timeout=REQUEST_TIMEOUT,
         ),
+        max_tokens=JUDGE_MAX_TOKENS,
     )
     # O AnswerRelevancy compara pergunta com pergunta, então é uso simétrico:
     # os dois lados entram com o prefixo de query do e5. Outros modelos indicados
@@ -152,17 +161,57 @@ def login(session):
     return response.json()["access_token"]
 
 
+def unloadOllama():
+    """Descarrega o modelo para limpar o prompt cache do ollama.
+
+    Cada pergunta usa contexto recuperado diferente, então nenhum prompt é
+    reaproveitado: o cache só cresce (~128 KiB por token, uns 5,5 GiB ao fim de
+    50 perguntas) até o container levar OOM. Não há API para limpar só o cache,
+    e o cache morre junto com o runner. O recarregamento custa ~9s.
+    """
+    try:
+        requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={"model": OLLAMA_MODEL, "keep_alive": 0},
+            timeout=60,
+        )
+    except requests.RequestException as error:
+        print(f"  aviso: não consegui descarregar o ollama: {error}")
+
+
+def saveData(data):
+    # Escreve num temporário e troca no fim: gravando 50 vezes, uma queda no meio
+    # da escrita deixaria o data.json truncado e perderia tudo o que já foi gerado.
+    temporary = DATA_FILE.with_suffix(".json.tmp")
+
+    with open(temporary, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+    os.replace(temporary, DATA_FILE)
+
+
 def makeData():
 
     with open(QUESTIONS_FILE, "r", encoding="utf-8") as f:
         questions = json.load(f)
 
+    # Gerar as 50 respostas leva quase uma hora. Como o data.json é gravado a
+    # cada pergunta, uma queda no meio não joga fora o que já foi feito: basta
+    # rodar de novo que ele pula o que já está lá.
+    data = loadData() if DATA_FILE.exists() else []
+    answered = {row["question"] for row in data}
+
+    if answered:
+        print(f"retomando: {len(answered)} respostas já em {DATA_FILE.name}")
+
     session = requests.Session()
     session.headers["Authorization"] = f"Bearer {login(session)}"
 
-    data = []
-
     for position, item in enumerate(questions, start=1):
+        if item["question"] in answered:
+            print(f"[{position}/{len(questions)}] já respondida, pulando")
+            continue
+
         print(f"[{position}/{len(questions)}] {item['question']}")
 
         response = session.post(
@@ -181,8 +230,11 @@ def makeData():
             buildDataRow(item["question"], item["ground_truth"], response.json())
         )
 
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+        saveData(data)
+
+        unloadOllama()
+
+    saveData(data)
 
     return data
 
@@ -273,11 +325,20 @@ async def scoreData(data, contextSource=None):
         for metric, _ in metrics
     }
 
+    # A média ignora os NaN, então sem essa contagem um exemplo que falhou some
+    # do resultado sem deixar rastro. Como quem falha costuma ser o exemplo ruim,
+    # a média sobe sozinha.
+    falhas = {
+        metric.name: sum(1 for score in scores if np.isnan(score[metric.name]))
+        for metric, _ in metrics
+    }
+
     return {
         "judge_model": JUDGE_MODEL,
         "context_source": contextSource,
         "n_examples": len(rows),
         "media": {name: jsonNumber(value) for name, value in media.items()},
+        "falhas": falhas,
         "por_exemplo": [
             {
                 "question": row["user_input"],
@@ -301,7 +362,9 @@ def runEval():
 
     print(f"\nMédia ({result['n_examples']} exemplos, contextos: {result['context_source']}):")
     for name, value in result["media"].items():
-        print(f"  {name}: {'nan' if value is None else f'{value:.4f}'}")
+        falhas = result["falhas"][name]
+        aviso = f"  <- {falhas}/{result['n_examples']} falharam, fora da média" if falhas else ""
+        print(f"  {name}: {'nan' if value is None else f'{value:.4f}'}{aviso}")
 
     return result["media"]
 

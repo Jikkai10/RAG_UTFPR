@@ -66,11 +66,8 @@ def organizeChunksByHierarchy(doc, info):
 
 
 class HierarchySplitter:
-    """Quebra os elementos do documento na hierarquia capítulo → seção → artigo.
-
-    Recebe as dependências de fora — o splitter de texto, a descrição das
-    tabelas (LLM) e a leitura de fórmulas — para que o percurso dos elementos
-    fique testável sem subir modelo nenhum.
+    """
+    Quebra os elementos do documento na hierarquia capítulo → seção → artigo.
     """
 
     def __init__(self, splitter, describe, readFormula):

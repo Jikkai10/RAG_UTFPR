@@ -70,8 +70,6 @@ def dictToList(doc, embedFunc: callable):
 
 def insertCalendar(tx, doc):
 
-    # it_antigo cobre os calendarios gravados antes do EventMonth, quando o
-    # item ficava pendurado direto na secao.
     queryReset = """
 MATCH (d:Document {id: $doc_id})-[:HAS_EVENT]->(ev:Events)
 

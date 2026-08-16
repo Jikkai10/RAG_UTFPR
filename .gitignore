@@ -5,6 +5,7 @@
 *.ipynb
 *.png
 *.env
+*.log
 teste.py
 .venv/
 uploads/

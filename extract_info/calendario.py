@@ -424,11 +424,6 @@ def calMonthText(month: dict) -> str:
 
 def calMonths(items: List[dict], info: dict, schoolDays: dict = None) -> List[dict]:
     """Agrupa os itens em meses, a unidade devolvida na busca.
-
-    O chunk continua sendo um evento isolado — o mês apenas reúne os eventos
-    que o chunk localizou, do mesmo jeito que o artigo reúne seus chunks nos
-    regulamentos. A chave é (mês, período) porque as páginas de tabela trazem
-    linhas de períodos letivos diferentes lado a lado.
     """
     months = []
     index = {}

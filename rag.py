@@ -15,6 +15,8 @@ from langgraph.graph import END
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
+from langchain_core.prompts import PromptTemplate
+from langchain_classic.retrievers.multi_query import MultiQueryRetriever
 from typing import List, Optional
 #import numpy as np
 from pydantic import BaseModel, Field
@@ -25,7 +27,7 @@ from config import RERANKER_MODEL
 
 FETCH_MULTIPLIER = 5
 
-FINAL_K = 20
+FINAL_K = 10
 
 REF_SCORE_DECAY = 0.8
 
@@ -47,6 +49,19 @@ EVENT_TOP_N = 3
 # Independente do k: os chunks recuperados se agrupam em poucos meses (um mês
 # cheio sozinho consome vários), então a busca vetorial precisa continuar larga.
 EVENT_FETCH_K = 50
+
+# A pergunta do aluno raramente usa as palavras do regulamento ("posso trancar?"
+# vs "trancamento de matrícula"). O MultiQueryRetriever reescreve a pergunta em
+# três versões e busca com todas, então uma reformulação que acerte o vocabulário
+# do documento salva a recuperação.
+MULTI_QUERY_PROMPT = PromptTemplate(
+    input_variables=["question"],
+    template="""Você é um assistente baseado em um modelo de linguagem de IA.
+    Sua tarefa é gerar três versões diferentes da pergunta feita pelo usuário para recuperar documentos relevantes de um banco de dados vetorial.
+    Ao gerar múltiplas perspectivas da pergunta original, seu objetivo é ajudar o usuário a superar algumas das limitações da busca por similaridade baseada em distância.
+    Forneça essas perguntas alternativas separadas por quebras de linha. Retorne apenas as perguntas, sem explicações adicionais ou coisas como 'aqui estão as perguntas'.
+    Pergunta original: {question}""",
+)
 
 TERM_INPUT_PATTERNS = (
     re.compile(r"(?:^|/)\s*([1-4])\s*[ºo]?\s*$"),
@@ -214,7 +229,7 @@ class Neo4jArticleRetriever(BaseRetriever):
 class Neo4jEventRetriever(BaseRetriever):
     embeddingModel: any
     db: any
-    k: int = 5
+    k: int = 10
     fetchK: int = EVENT_FETCH_K
 
     def search(
@@ -300,7 +315,7 @@ class Neo4jEventRetriever(BaseRetriever):
                     metadata={
                         "id": record["id"],
                         "source_type": "calendario",
-                        "Datas": formatDate(record["data_inicio"], record["data_fim"]),
+                        #"Datas": formatDate(record["data_inicio"], record["data_fim"]),
                         "Mes": record["mes"],
                         "Dias letivos": record["dias_letivos"],
                         "Categoria": record["categoria"],
@@ -366,10 +381,19 @@ class Rag:
         # )
 
         self.articleRetriever = Neo4jArticleRetriever(
-            embeddingModel=self.embeddingModel, db=self.db, k=10
+            embeddingModel=self.embeddingModel, db=self.db, k=20
         )
         self.eventRetriever = Neo4jEventRetriever(
-            embeddingModel=self.embeddingModel, db=self.db, k=EVENT_K
+            embeddingModel=self.embeddingModel, db=self.db, k=10
+        )
+        # Só envolve os regulamentos. O calendário entra por search(), com os
+        # filtros de período/campus/ano, e o wrapper só sabe chamar invoke(query):
+        # passar por ele perderia os filtros.
+        self.articleMultiQuery = MultiQueryRetriever.from_llm(
+            retriever=self.articleRetriever,
+            llm=self.llm,
+            prompt=MULTI_QUERY_PROMPT,
+            include_original=True,
         )
         self.rerankerModel = HuggingFaceCrossEncoder(
             model_name=RERANKER_MODEL
@@ -473,7 +497,7 @@ class Rag:
         Use para regras, direitos, deveres, critérios, penalidades e prazos regulamentares.
         Gere uma entrada "query": "frase para busca RAG", apenas a string, sem type ou outras coisas"""
         print(f"Retrieving regulations for query: {query}")
-        retrievedDocs = self.rerank(query, self.articleRetriever.invoke(query))
+        retrievedDocs = self.rerank(query, self.articleMultiQuery.invoke(query))
         print(f"Retrieved {len(retrievedDocs)} regulation documents.")
         if not retrievedDocs:
             return "Nenhum resultado encontrado.", []
@@ -518,8 +542,9 @@ class Rag:
         - searchCalendar: datas e eventos do calendário acadêmico.
 
         Sempre use as ferramentas antes de responder e use quantas forem necessárias, uma por vez, até reunir toda a informação.
-        Se a pergunta tiver mais de um assunto, faça uma busca para cada assunto.
+        Caso uma busca não retorne toda a informação necessária, faça outra busca para o que falta.
         Quando os resultados já responderem a pergunta, não busque de novo.
+        Se a pergunta se tratar de datas, mas o calendário não deixar explicita, use o regulamento para inferir a data.
         A entrada é no formato "query": "frase para busca RAG", apenas a string, sem type ou outras coisas."""
         response = llmWithTools.invoke(
             [SystemMessage(content=systemMessageContent)] + state["messages"]
@@ -581,9 +606,14 @@ class Rag:
         Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da UTFPR.
         Os documentos abaixo apresentam as fontes atualizadas e devem ser consideradas como verdade.
         Cada documento está numerado. Cite a fonte de cada afirmação com o marcador [n] correspondente, logo depois da informação.
-        Nunca cite um documento que você não usou e nunca invente números.
-        Se não souber a resposta ou não haver documentos, diga que não sabe.
-        Sempre escreva no formato markdown
+        - Responda usando apenas o que está nos documentos abaixo.
+        - Se a pergunta tiver várias partes, responda cada parte separadamente e diga
+        explicitamente qual parte não consta nos documentos. Nunca descarte a resposta
+        inteira por causa de uma parte que falta.
+        - Caso a pergunta envolva datas, mas não especifique se é o primeiro ou segundo semestre, responda com a data de ambos os semestres, se houver.
+        - Nunca cite um documento que você não usou e nunca invente números.
+        - Só diga que não sabe se nenhuma parte da pergunta puder ser respondida com os documentos. Antes de dizer isso, releia os documentos.
+        - Sempre escreva no formato markdown
 
 
         Documentos:

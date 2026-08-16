@@ -8,12 +8,12 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     environment:
-      - OLLAMA_KEEP_ALIVE=true
+      - OLLAMA_KEEP_ALIVE=5m
     entrypoint: >
       bash -c "
         ollama serve &
         sleep 5 &&
-        ollama pull llama3.2 &&
+        ollama pull llama3.1 &&
         wait
       "
 
