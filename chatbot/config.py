@@ -7,9 +7,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 EMBEDDING_MODEL = "intfloat/multilingual-e5-base"
 
-# O e5 é treinado com prefixos assimétricos: a pergunta entra como "query: " e o
-# trecho indexado como "passage: ". Sem eles os dois vetores caem no mesmo espaço
-# simétrico e a similaridade fica pior.
+# Prefixos assimétricos do e5.
 QUERY_PREFIX = "query: "
 PASSAGE_PREFIX = "passage: "
 

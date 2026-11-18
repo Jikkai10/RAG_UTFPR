@@ -13,6 +13,7 @@ from extract_info.calendario import calSections, extractLayout
 from extract_info.formula import FormulaReader
 from extract_info.hierarchy import CHUNK_OVERLAP, CHUNK_SIZE, HierarchySplitter
 from extract_info.layout import stableDocId
+from extract_info.refine import consolidateNorms, loadAcronyms, saveAcronyms
 from extract_info.tables import collectHtmlTables
 from extract_info.util import dictToList, insertCalendar, insertStructure
 
@@ -54,13 +55,21 @@ class PrepDocs:
         if docType == 0:
             doc["doc_id"] = None
         insertStructure(self.db, docList, docType, doc["doc_id"])
+        saveAcronyms(self.db, docList["id"], docs.get("siglas", {}))
+
+        # O regulamento pai passa a guardar o texto vigente dos artigos alterados.
+        targetId = doc["doc_id"] if docType != 0 else docList["id"]
+        if targetId:
+            consolidateNorms(
+                self.db,
+                targetId,
+                self.splitter.split_text,
+                self.embedding.embed_documents,
+                loadAcronyms(self.db, targetId),
+            )
 
     def getDocument(self, doc, docType = 0):
-        """
-            partition html naturalmente exclui informações adicionais nas tags, como rowspan e colspan,
-            o que pode ser problemático para descobrir o formato das tabelas,
-            por isso o tratamento das tabelas é feito separadamente.
-        """
+        """Tabelas são lidas à parte porque partition_html descarta rowspan/colspan."""
         filePath = UPLOAD_DIR / doc["filename"]
 
         if not filePath.exists():
@@ -84,9 +93,7 @@ class PrepDocs:
         self.insertDocument(doc, docs, docType)
 
     def getPdfDocument(self, doc, docType = 0):
-        """
-            inferencia de tabelas pode sair com erros
-        """
+        """Inferência de tabelas pode sair com erros."""
         filePath = UPLOAD_DIR / doc["filename"]
         elements = partition_pdf(
             filename=filePath,
@@ -200,13 +207,6 @@ if __name__ == "__main__":
 
     ]
 
-    # docs2=[
-    #     {
-    #         "name": "REGULAMENTO DOS ESTÁGIOS CURRICULARES SUPERVISIONADOS",
-    #         "url": "https://sei.utfpr.edu.br/sei/publicacoes/controlador_publicacoes.php?acao=publicacao_visualizar&id_documento=1608522&id_orgao_publicacao=0",
-    #         "filepath": "ESTAGIO_UTFPR.pdf"
-    #     },
-    # ]
     ollamaUrl = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
     llm = ChatOllama(model="llama3.2", temperature=0.5, base_url=ollamaUrl)

@@ -109,11 +109,7 @@ def tableRowsToChunks(markdownTable: str, caption: str = "") -> List[str]:
 
 
 def collectHtmlTables(soup) -> List[Dict]:
-    """Tabelas do HTML bruto, com assinatura para casar com os elementos do unstructured.
-
-    partition_html descarta rowspan/colspan, por isso as tabelas são lidas
-    direto do HTML e depois reconciliadas por similaridade de texto.
-    """
+    """Tabelas do HTML bruto, com assinatura para casar com os elementos do unstructured."""
     tables = []
 
     for table in soup.find_all("table"):

@@ -45,7 +45,7 @@ Recomendado para desenvolvimento: só os serviços no Docker, a API no host (evi
 
     python -m db.create_db
 
-Cria as constraints, o índice vetorial e os usuários padrão (`admin@email.com` / `user@email.com`, senha `senha`). É idempotente.
+Cria as constraints, o índice vetorial e os usuários padrão (`admin@email.com` / `user@email.com`, senha `senha`).
 
 Para zerar o banco (**apaga todos os nós, constraints e índices**):
 
@@ -58,9 +58,7 @@ Para zerar o banco (**apaga todos os nós, constraints e índices**):
 ### Ollama sem Docker:
 
     curl -fsSL https://ollama.com/install.sh | sh
-    ollama pull llama3.2
-
-Os modelos testados foram llama3.1 e llama3.2. Para testes é recomendado o llama3.2 por ser mais leve e rápido, embora tenha pior desempenho.
+    ollama pull gemma4:e2b
 
 Mais informações: https://ollama.com
 
@@ -103,6 +101,8 @@ Documentos (rotas de escrita são restritas a `admin`):
     python evaluate.py
 
 Usa o `ragas` com um LLM juiz configurado no `.env` (`JUDGE_*`). Ver comentários no `.env.example`.
+
+As perguntas ficam em `../avaliacao/perguntas_respostas.json`; os resultados de cada fluxo estão em [`../avaliacao`](../avaliacao/).
 
 ## Melhorias futuras:
 - Melhoria das interfaces

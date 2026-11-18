@@ -423,8 +423,7 @@ def calMonthText(month: dict) -> str:
 
 
 def calMonths(items: List[dict], info: dict, schoolDays: dict = None) -> List[dict]:
-    """Agrupa os itens em meses, a unidade devolvida na busca.
-    """
+    """Agrupa os itens em meses, a unidade devolvida na busca."""
     months = []
     index = {}
 

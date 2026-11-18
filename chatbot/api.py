@@ -9,7 +9,7 @@ from langchain_ollama import ChatOllama
 from pydantic import BaseModel, Field
 import uuid
 from db.connection import Neo4jConnection
-from rag import Rag
+from rag import Rag, NUM_CTX
 from extract_info.extract import PrepDocs
 import requests
 from config import UPLOAD_DIR, buildEmbeddings
@@ -52,7 +52,11 @@ class EvalScoreRequest(BaseModel):
 
 ollamaUrl = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
-llm = ChatOllama(model="llama3.1", temperature=0.5, base_url=ollamaUrl)
+ollamaModel = os.getenv("OLLAMA_MODEL", "gemma4:e2b")
+
+llm = ChatOllama(
+    model=ollamaModel, temperature=0, base_url=ollamaUrl, num_ctx=NUM_CTX
+)
 
 embeddings = buildEmbeddings()
 
@@ -271,8 +275,6 @@ async def answerStreamApi(sessionId: str, request: MessageRequest, user = Depend
             "Connection": "keep-alive",
         },
     )
-    # response = rag.fullAnswer(request.message, [], sessionId)
-    # return response
 
 @app.post("/rag/{sessionId}")
 async def answerApi(sessionId: str, request: MessageRequest, user = Depends(getCurrentUser)):

@@ -1,33 +1,52 @@
-import asyncio
 import json
+import math
+import os
 import re
+import uuid
 
-#from langchain.schema import AIMessage
 from langgraph.graph import MessagesState, StateGraph
 from langchain_core.tools import tool
-from langchain_core.messages import SystemMessage
-from langgraph.prebuilt import ToolNode
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END
-#from langgraph.checkpoint.memory import MemorySaver
-#from langchain_chroma import Chroma
-#from langchain_classic.retrievers.contextual_compression import ContextualCompressionRetriever
-#from langchain_community.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_classic.retrievers.multi_query import MultiQueryRetriever
-from typing import List, Optional
-#import numpy as np
+from langchain_ollama import ChatOllama
+from typing import List, Optional, Union
 from pydantic import BaseModel, Field
 import logging
 from datetime import datetime
 from config import RERANKER_MODEL
 
 
-FETCH_MULTIPLIER = 5
 
-FINAL_K = 10
+def envFlag(name, default):
+    """Liga/desliga uma etapa pelo ambiente, para comparar configuracoes sem editar o codigo."""
+    value = os.getenv(name)
+    return default if value is None else value.strip().lower() in ("1", "true", "yes", "on")
+
+
+def envInt(name, default):
+    value = os.getenv(name)
+    return default if value is None or not value.strip() else int(value)
+
+
+def envFloat(name, default):
+    value = os.getenv(name)
+    return default if value is None or not value.strip() else float(value)
+
+
+USE_MULTI_QUERY = envFlag("RAG_USE_MULTI_QUERY", True)
+
+USE_RERANK = envFlag("RAG_USE_RERANK", True)
+
+# Chunks pedidos ao índice vetorial por documento retornado (o índice é aproximado).
+FETCH_MULTIPLIER = envInt("RAG_FETCH_MULTIPLIER", 40)
+
+FINAL_K = envInt("RAG_FINAL_K", 10)
 
 REF_SCORE_DECAY = 0.8
 
@@ -36,31 +55,84 @@ MAX_ROUNDS = 3
 # Piso absoluto: só descarta o lote quando nada é minimamente relevante.
 MIN_RERANK_SCORE = 0.01
 
-# Piso relativo ao melhor score do lote. Os scores do reranker variam muito de
-# consulta para consulta, então um corte fixo alto zera consultas legítimas.
-RERANK_SCORE_RATIO = 0.1
 
-# O calendário devolve o mês inteiro, não um evento solto: cada documento já
-# traz dezenas de linhas, então poucos bastam para responder.
-EVENT_K = 5
+RERANK_SCORE_RATIO = 0.3
 
-EVENT_TOP_N = 3
+# Peso do cross-encoder no score final; o resto é a similaridade de embedding.
+RERANK_CROSS_WEIGHT = envFloat("RAG_RERANK_CROSS_WEIGHT", 0.7)
 
-# Independente do k: os chunks recuperados se agrupam em poucos meses (um mês
-# cheio sozinho consome vários), então a busca vetorial precisa continuar larga.
+# Quantos documentos sobrevivem ao corte final em cada busca.
+ARTICLE_TOP_N = envInt("RAG_ARTICLE_TOP_N", 5)
+
+EVENT_TOP_N = envInt("RAG_EVENT_TOP_N", 5)
+
 EVENT_FETCH_K = 50
 
-# A pergunta do aluno raramente usa as palavras do regulamento ("posso trancar?"
-# vs "trancamento de matrícula"). O MultiQueryRetriever reescreve a pergunta em
-# três versões e busca com todas, então uma reformulação que acerte o vocabulário
-# do documento salva a recuperação.
+# Tamanho do lote que cada retriever devolve por consulta.
+ARTICLE_K = envInt("RAG_ARTICLE_K", 10)
+
+EVENT_K = envInt("RAG_EVENT_K", 10)
+
+# Janela de contexto do ollama.
+NUM_CTX = envInt("RAG_NUM_CTX", 4096)
+
+# Divide a pergunta em subperguntas, cada uma com busca e resposta própria.
+USE_DECOMPOSE = envFlag("RAG_USE_DECOMPOSE", False)
+
+MAX_SUBQUESTIONS = envInt("RAG_MAX_SUBQUESTIONS", 4)
+
+
 MULTI_QUERY_PROMPT = PromptTemplate(
     input_variables=["question"],
-    template="""Você é um assistente baseado em um modelo de linguagem de IA.
-    Sua tarefa é gerar três versões diferentes da pergunta feita pelo usuário para recuperar documentos relevantes de um banco de dados vetorial.
-    Ao gerar múltiplas perspectivas da pergunta original, seu objetivo é ajudar o usuário a superar algumas das limitações da busca por similaridade baseada em distância.
-    Forneça essas perguntas alternativas separadas por quebras de linha. Retorne apenas as perguntas, sem explicações adicionais ou coisas como 'aqui estão as perguntas'.
-    Pergunta original: {question}""",
+    template="""Você reescreve a pergunta de um aluno em consultas de busca para um índice vetorial de regulamentos da UTFPR.
+
+    Regras:
+    - Gere 3 consultas curtas, cada uma sobre um único assunto.
+    - Escreva cada consulta como se fosse um trecho do próprio regulamento: impessoal, na terceira pessoa, no tom em que uma norma enuncia uma regra. Não use o jeito do aluno de perguntar.
+    - Se a pergunta juntar vários assuntos ou vários documentos, separe: uma consulta por assunto, cada uma sozinha.
+    - Não use nomes nem listas de documentos: eles dominam a similaridade e afogam o termo que interessa.
+    - Não invente números, datas nem identificadores de norma que não estejam na pergunta.
+    - Responda só com as consultas, uma por linha, sem numerar e sem comentar.
+
+    Pergunta: {question}""",
+)
+
+
+CALENDAR_MULTI_QUERY_PROMPT = PromptTemplate(
+    input_variables=["question"],
+    template="""Você reescreve a pergunta de um aluno em consultas de busca para um índice vetorial do calendário acadêmico da UTFPR.
+
+    Regras:
+    - Gere 3 consultas curtas, cada uma sobre um único evento ou prazo.
+    - Escreva cada consulta como o evento é nomeado no calendário: expressão curta e impessoal, sem verbo de pergunta e sem o jeito do aluno de perguntar.
+    - Se a pergunta juntar vários eventos ou prazos, separe: uma consulta por evento, cada uma sozinha.
+    - Não escreva ano, período letivo nem campus: eles já são filtrados à parte e na consulta só afogam o nome do evento.
+    - Não invente datas, eventos nem prazos que não estejam na pergunta.
+    - Responda só com as consultas, uma por linha, sem numerar e sem comentar.
+
+    Pergunta: {question}""",
+)
+
+
+DECOMPOSE_PROMPT = PromptTemplate(
+    input_variables=["question", "max"],
+    template="""Você divide a pergunta de um aluno em subperguntas que precisam ser respondidas para responder a pergunta inteira.
+
+    Regras:
+    - Cada subpergunta trata de uma parte da pergunta que precisa ser respondida.
+    - Garanta que cada subpergunta tenha todas as informações necessárias para ser respondida sozinha.
+    - Não acrescente assuntos que a pergunta não pede e não repita a mesma parte com outras palavras.
+    - Faça a pergunta de forma genérica, sem se referir a documentos, artigos, normas ou dados específicos: o modelo de linguagem vai buscar os documentos e artigos que respondem a cada subpergunta.
+    - Cubra todas as partes e informações necessárias da pergunta. Se ela tiver uma parte e necessitar de uma unica informação, devolva a própria pergunta.
+    - Gere no máximo {max} subperguntas.
+    - Responda só com as subperguntas, uma por linha, sem numerar e sem comentar.
+
+    Exemplo:
+    Pergunta: Eu reprovo com 50% numa disciplina e a segunda chamada de prova pode ser [condição]?
+    Quantas faltas um aluno pode ter numa disciplina?
+    A segunda chamada de prova pode ser [condição]?
+
+    Pergunta: {question}""",
 )
 
 TERM_INPUT_PATTERNS = (
@@ -68,6 +140,22 @@ TERM_INPUT_PATTERNS = (
     re.compile(r"([1-4])\s*[ºo]?\s*per[íi]odo", re.IGNORECASE),
 )
 YEAR_INPUT_RE = re.compile(r"\b(20\d{2})\b")
+
+# Todo documento é da UTFPR: o nome da instituição na consulta só atrapalha a busca.
+INSTITUTION_RE = re.compile(
+    r"\s*\b(?:(?:d|n|pel)[aoe]s?\s+|para\s+a\s+)?"
+    r"(?:UTFPR|Universidade\s+Tecnol[óo]gica\s+Federal\s+do\s+Paran[áa])\b",
+    re.IGNORECASE,
+)
+
+
+def searchableQuery(query: str) -> str:
+    """Consulta sem o nome da instituição; se não sobrar nada, fica a original."""
+
+    cleaned = INSTITUTION_RE.sub("", query or "")
+    cleaned = re.sub(r"\s+([?.,;:])", r"\1", re.sub(r"\s{2,}", " ", cleaned)).strip()
+
+    return cleaned or query
 
 
 def normalizeTerm(term, year):
@@ -110,7 +198,7 @@ class Neo4jArticleRetriever(BaseRetriever):
 
     def _get_relevant_documents(self, query: str) -> List[Document]:
 
-        embedding = self.embeddingModel.embed_query(query)
+        embedding = self.embeddingModel.embed_query(searchableQuery(query))
 
         cypher = """
         CALL db.index.vector.queryNodes(
@@ -165,6 +253,13 @@ class Neo4jArticleRetriever(BaseRetriever):
         LIMIT $final_k
 
         OPTIONAL MATCH (res:Content)-[:REF_NORM]->(ct)
+        OPTIONAL MATCH (resDoc:Document {id: res.documento_id})
+
+        WITH ct, score, collect(
+            CASE WHEN res IS NULL THEN NULL
+            ELSE {texto: res.texto, fonte: resDoc.titulo} END
+        ) AS resolucoes
+
         OPTIONAL MATCH (s:Section)-[:HAS_CONT]->(ct)
         OPTIONAL MATCH (c1:Chapter)-[:HAS_CONT]->(ct)
         OPTIONAL MATCH (c2:Chapter)-[:HAS_SEC]->(s)
@@ -172,7 +267,7 @@ class Neo4jArticleRetriever(BaseRetriever):
         WITH ct,
             coalesce(c1, c2) AS chapter,
             s,
-            res,
+            resolucoes,
             score
 
         OPTIONAL MATCH (d:Document)-[:HAS_CAP]->(chapter)
@@ -184,7 +279,8 @@ class Neo4jArticleRetriever(BaseRetriever):
             ct.tipo AS tipo,
             ct.num AS numero,
             ct.pagina_inicio AS pagina,
-            res.texto AS res_texto,
+            resolucoes,
+            ct.alterado_por AS alterado_por,
             chapter.capitulo AS capitulo,
             s.secao AS secao,
             d.titulo AS documento
@@ -203,8 +299,11 @@ class Neo4jArticleRetriever(BaseRetriever):
 
         for record in results:
             text = record["texto"]
-            if record["res_texto"]:
-                text += "\n Esse artigo foi alterado: \n" + record["res_texto"]
+            # A resolução inteira só vai junto quando a alteração não pôde ser aplicada no artigo.
+            applied = record["alterado_por"] or []
+            for resolution in record["resolucoes"]:
+                if resolution["texto"] and resolution["fonte"] not in applied:
+                    text += "\n Esse artigo foi alterado: \n" + resolution["texto"]
             contentType = record["tipo"]
 
             docs.append(
@@ -218,6 +317,7 @@ class Neo4jArticleRetriever(BaseRetriever):
                         "Secao": record["secao"] if record["secao"] else None,
                         "Documento": record["documento"],
                         "Pagina": record["pagina"],
+                        "Alterado por": ", ".join(record["alterado_por"]) if record["alterado_por"] else None,
 
                     }
                 )
@@ -238,9 +338,10 @@ class Neo4jEventRetriever(BaseRetriever):
         term: str = None,
         campus: str = None,
         year: int = None,
+        calem: bool = False,
     ) -> List[Document]:
 
-        embedding = self.embeddingModel.embed_query(query)
+        embedding = self.embeddingModel.embed_query(searchableQuery(query))
         term, year = normalizeTerm(term, year)
 
         cypher = """
@@ -261,26 +362,40 @@ class Neo4jEventRetriever(BaseRetriever):
           AND ($periodo IS NULL OR coalesce(mes.periodo, ev.periodo) = $periodo)
           AND ($ano IS NULL OR coalesce(mes.ano, ev.ano) = $ano)
           AND ($campus IS NULL OR toLower(coalesce(ev.campus, '')) CONTAINS toLower($campus))
+          // O CALEM tem calendario proprio com os mesmos nomes de evento da
+          // graduacao ("Inicio do periodo letivo" em 12/08 contra 18/08), e a
+          // busca devolvia as duas datas misturadas. Ou e so CALEM, ou e tudo
+          // menos o CALEM.
+          AND ((toUpper(coalesce(ev.categoria, '')) = 'CALEM') = $calem)
 
-        WITH coalesce(mes, ev) AS alvo, mes, ev, max(score) AS score
+        // Ordena antes de agregar para o head(collect(...)) pegar o texto do chunk
+        // de maior score, e nao um qualquer do grupo.
+        WITH coalesce(mes, ev) AS alvo, mes, ev, ch, score
+        ORDER BY score DESC
+
+        WITH alvo, mes, ev, max(score) AS score, head(collect(ch.texto)) AS chunk_texto
         ORDER BY score DESC
         LIMIT $k
 
         OPTIONAL MATCH (alvo)-[:HAS_ITEM]->(item:EventItem)
 
-        WITH alvo, mes, ev, score,
+        WITH alvo, mes, ev, score, chunk_texto,
             min(item.data_inicio) AS data_inicio,
             max(item.data_fim) AS data_fim
 
         OPTIONAL MATCH (d:Document)-[:HAS_EVENT]->(ev)
 
-        WITH alvo, mes, ev, score, data_inicio, data_fim,
+        WITH alvo, mes, ev, score, chunk_texto, data_inicio, data_fim,
             head(collect(d.titulo)) AS documento
 
         RETURN
             score,
             alvo.id AS id,
-            alvo.texto AS texto,
+            // Quando o alvo e um mes, o texto dele e o conteudo util. Quando e o
+            // Events (periodo inteiro), o chunk que casou e o resumo dos dias
+            // letivos numa linha, enquanto alvo.texto espalha os mesmos numeros
+            // por dezenas de linhas de datas: o modelo perde meses no caminho.
+            CASE WHEN mes IS NULL THEN chunk_texto ELSE alvo.texto END AS texto,
             toString(data_inicio) AS data_inicio,
             toString(data_fim) AS data_fim,
             mes.mes AS mes,
@@ -300,6 +415,7 @@ class Neo4jEventRetriever(BaseRetriever):
             "periodo": term,
             "campus": campus or None,
             "ano": year,
+            "calem": bool(calem),
         })
 
         docs = []
@@ -315,7 +431,6 @@ class Neo4jEventRetriever(BaseRetriever):
                     metadata={
                         "id": record["id"],
                         "source_type": "calendario",
-                        #"Datas": formatDate(record["data_inicio"], record["data_fim"]),
                         "Mes": record["mes"],
                         "Dias letivos": record["dias_letivos"],
                         "Categoria": record["categoria"],
@@ -342,9 +457,8 @@ class RAGSources(BaseModel):
 class MyState(MessagesState):
     rounds: int
     candidates: List[dict]
+    question: str
 
-# logging.basicConfig()
-# logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
 class Rag:
 
     def __init__(self, db, embeddingModel, llm):
@@ -353,47 +467,42 @@ class Rag:
         self.embeddingModel = embeddingModel
         self.llm = llm
 
+        # Registra a configuração usada em cada rodada da avaliação.
+        print(
+            "config do RAG: "
+            f"multi_query={USE_MULTI_QUERY} rerank={USE_RERANK} "
+            f"article_k={ARTICLE_K} final_k={FINAL_K} article_top_n={ARTICLE_TOP_N} "
+            f"event_k={EVENT_K} event_top_n={EVENT_TOP_N} num_ctx={NUM_CTX} "
+            f"decompose={USE_DECOMPOSE} max_subquestions={MAX_SUBQUESTIONS} "
+            f"cross_weight={RERANK_CROSS_WEIGHT}"
+        )
 
-        # class LineListOutputParser(BaseOutputParser[List[str]]):
-        #     """Output parser for a list of lines."""
-
-        #     def parse(self, text: str) -> List[str]:
-        #         lines = text.strip().split("\n")
-        #         return list(filter(None, lines))  # Remove empty lines
-
-
-        # output_parser = LineListOutputParser()
-
-        # QUERY_PROMPT = PromptTemplate(
-        #     input_variables=["question"],
-        #     template="""Você é um assistente baseado em um modelo de linguagem de IA.
-        #     Sua tarefa é gerar três versões diferentes da pergunta feita pelo usuário para recuperar documentos relevantes de um banco de dados vetorial.
-        #     Ao gerar múltiplas perspectivas da pergunta original, seu objetivo é ajudar o usuário a superar algumas das limitações da busca por similaridade baseada em distância.
-        #     Forneça essas perguntas alternativas separadas por quebras de linha. Retorne apenas as perguntas, sem explicações adicionais ou coisas como 'aqui estão as perguntas'.
-        #     Pergunta original: {question}""",
-        # )
+        # temperature 0 e seed fixo deixam a escolha da busca reprodutível.
+        self.searchLlm = ChatOllama(
+            model=getattr(llm, "model", "llama3.1"),
+            base_url=getattr(llm, "base_url", None),
+            temperature=0,
+            seed=0,
+            num_ctx=NUM_CTX,
+        )
 
 
-        # llm_retriever = ChatOllama(model="llama3.1", temperature=0)
-        # llm_chain = QUERY_PROMPT | llm_retriever | output_parser
-        # retriever = MultiQueryRetriever(
-        #     retriever=vector_store.as_retriever(), llm_chain=llm_chain, parser_key="lines", include_original=True
-        # )
 
         self.articleRetriever = Neo4jArticleRetriever(
-            embeddingModel=self.embeddingModel, db=self.db, k=20
+            embeddingModel=self.embeddingModel, db=self.db, k=ARTICLE_K
         )
         self.eventRetriever = Neo4jEventRetriever(
-            embeddingModel=self.embeddingModel, db=self.db, k=10
+            embeddingModel=self.embeddingModel, db=self.db, k=EVENT_K
         )
-        # Só envolve os regulamentos. O calendário entra por search(), com os
-        # filtros de período/campus/ano, e o wrapper só sabe chamar invoke(query):
-        # passar por ele perderia os filtros.
+        # O calendário tem multi-query próprio (searchCalendarDocs) para manter os filtros.
         self.articleMultiQuery = MultiQueryRetriever.from_llm(
             retriever=self.articleRetriever,
-            llm=self.llm,
+            llm=self.searchLlm,
             prompt=MULTI_QUERY_PROMPT,
             include_original=True,
+        )
+        self.calendarQueryChain = (
+            CALENDAR_MULTI_QUERY_PROMPT | self.searchLlm | StrOutputParser()
         )
         self.rerankerModel = HuggingFaceCrossEncoder(
             model_name=RERANKER_MODEL
@@ -403,41 +512,52 @@ class Rag:
             tool(response_format="content_and_artifact")(self.searchRegulations),
             tool(response_format="content_and_artifact")(self.searchCalendar),
         ]
-        tools = ToolNode(self.tools)
 
-        graphBuilder = StateGraph(MyState)
-        graphBuilder.add_node("queryOrRespond", self.queryOrRespond)
-        graphBuilder.add_node("tools", tools)
-        graphBuilder.add_node("generate", self.generate)
-
-
-        graphBuilder.set_entry_point("queryOrRespond")
-        graphBuilder.add_conditional_edges(
-            "queryOrRespond",
+        # Cada subpergunta passa por um agente que busca e escreve a resposta parcial.
+        subBuilder = StateGraph(MyState)
+        subBuilder.add_node("searchOrAnswer", self.searchOrAnswer)
+        subBuilder.add_node("tools", self.numberedTools)
+        subBuilder.add_node("forceAnswer", self.forceAnswer)
+        subBuilder.set_entry_point("searchOrAnswer")
+        subBuilder.add_conditional_edges(
+            "searchOrAnswer",
             self.shouldContinue,
-            {"tools": "tools", "generate": "generate"},
+            {"tools": "tools", "answer": "forceAnswer"},
         )
-        graphBuilder.add_edge(
-            "tools",
-            "queryOrRespond",
+        subBuilder.add_edge("tools", "searchOrAnswer")
+        subBuilder.add_edge("forceAnswer", END)
+        self.subquestionGraph = subBuilder.compile()
+
+        self.decomposeChain = DECOMPOSE_PROMPT | self.searchLlm | StrOutputParser()
+
+    def querySimilarity(self, query: str, docs: List[Document]) -> List[float]:
+        """Similaridade da consulta com cada documento, normalizada no lote."""
+        print(f"Query: {query}", flush=True)
+        queryVector = self.embeddingModel.embed_query(query)
+        docVectors = self.embeddingModel.embed_documents(
+            [d.page_content for d in docs]
         )
-        graphBuilder.add_edge(
-            "generate",
-            END,
-        )
 
+        queryNorm = math.sqrt(sum(v * v for v in queryVector)) or 1.0
 
-        self.graph = graphBuilder.compile()
+        similarities = []
+        for vector in docVectors:
+            norm = math.sqrt(sum(v * v for v in vector)) or 1.0
+            dot = sum(a * b for a, b in zip(queryVector, vector))
+            similarities.append(dot / (queryNorm * norm))
 
-        # memory = MemorySaver()
-        # self.graph = graphBuilder.compile(checkpointer=memory)
+        lo, hi = min(similarities), max(similarities)
 
+        if hi == lo:
+            return [1.0] * len(similarities)
+
+        return [(s - lo) / (hi - lo) for s in similarities]
 
     def rerank(
         self,
         query: str,
         docs: List[Document],
-        topN: int = 5,
+        topN: int = ARTICLE_TOP_N,
         minScore: float = MIN_RERANK_SCORE,
         ratio: float = RERANK_SCORE_RATIO,
     ) -> List[Document]:
@@ -445,9 +565,20 @@ class Rag:
         if not docs:
             return []
 
+        # Sem reranker, a ordem da busca vetorial já é por score.
+        if not USE_RERANK:
+            return docs[:topN]
+
+        query = searchableQuery(query)
         scores = self.rerankerModel.score([
             (query, d.page_content) for d in docs
         ])
+
+        if RERANK_CROSS_WEIGHT < 1.0:
+            scores = [
+                RERANK_CROSS_WEIGHT * cross + (1 - RERANK_CROSS_WEIGHT) * sim
+                for cross, sim in zip(scores, self.querySimilarity(query, docs))
+            ]
 
         ranked = sorted(
             zip(docs, scores),
@@ -459,17 +590,100 @@ class Rag:
 
         return [doc for doc, score in ranked[:topN] if score >= floor]
 
-    def docLabel(self, doc: Document) -> str:
+    def generateQueries(self, chain, query: str) -> List[str]:
+        """Pergunta original mais as reescritas do LLM, sem repetidas."""
 
-        return ", ".join(
-            f"{k}: {v}"
-            for k, v in doc.metadata.items()
-            if k != "id" and v is not None
-        )
+        queries = [query]
+        seen = {query.strip().lower()}
+
+        try:
+            text = chain.invoke({"question": query})
+        except Exception as error:
+            # Se a reescrita falhar, segue só com a pergunta original.
+            print(f"multi_query falhou, seguindo so com a pergunta original: {error}")
+            return queries
+
+        for line in text.splitlines():
+            # Mesmo mandado nao numerar, o modelo as vezes marca a lista.
+            line = re.sub(r"^[\s\-\*\d\.\)]+", "", line).strip()
+            key = line.lower()
+
+            if not line or key in seen:
+                continue
+
+            seen.add(key)
+            queries.append(line)
+
+        return queries
+
+    def searchCalendarDocs(
+        self,
+        query: str,
+        term: str = None,
+        campus: str = None,
+        year: int = None,
+        calem: bool = False,
+    ) -> List[Document]:
+        """Busca no calendario com as variantes da pergunta, mantendo os filtros."""
+
+        if not USE_MULTI_QUERY:
+            return self.eventRetriever.search(
+                query, term=term, campus=campus, year=year, calem=calem
+            )
+
+        docs = []
+        seen = set()
+
+        for variant in self.generateQueries(self.calendarQueryChain, query):
+            print(f"  variante do calendário: {variant}")
+
+            for doc in self.eventRetriever.search(
+                variant, term=term, campus=campus, year=year, calem=calem
+            ):
+                key = doc.metadata.get("id") or doc.page_content
+                if key in seen:
+                    continue
+
+                seen.add(key)
+                docs.append(doc)
+
+        return docs
+
+    def docLabel(self, doc: Document) -> str:
+        """Rótulo legível do documento, que o modelo vê antes do conteúdo."""
+        meta = doc.metadata
+
+        if meta.get("source_type") == "calendario":
+            period = f"{meta['Periodo']} período" if meta.get("Periodo") else None
+            if period and meta.get("Ano"):
+                period += f" de {meta['Ano']}"
+            details = [
+                meta.get("Campus"),
+                period,
+                meta.get("Mes"),
+                meta.get("Categoria"),
+                f"dias letivos: {meta['Dias letivos']}" if meta.get("Dias letivos") else None,
+            ]
+            label = meta.get("Documento") or "Calendário acadêmico"
+            details = [part for part in details if part]
+            return f"{label} ({', '.join(details)})" if details else label
+
+        where = f"Art. {meta['Artigo']}" if meta.get("Artigo") else "Trecho"
+        label = f"{where} do {meta.get('Documento') or 'regulamento'}"
+
+        details = []
+        if meta.get("Capitulo") and meta["Capitulo"] != "—":
+            details.append(f"Capítulo {meta['Capitulo']}")
+        if meta.get("Secao") and meta["Secao"] != "—":
+            details.append(f"Seção {meta['Secao']}")
+        if meta.get("Alterado por"):
+            details.append(f"redação alterada por {meta['Alterado por']}")
+
+        return f"{label} ({', '.join(details)})" if details else label
 
     def serialize(self, docs: List[Document]) -> str:
         return "\n\n".join(
-            f"Fonte: {self.docLabel(doc)}\nConteudo: {doc.page_content}"
+            f"{self.docLabel(doc)}\n{doc.page_content}"
             for doc in docs
         )
 
@@ -491,36 +705,37 @@ class Rag:
 
         return docs
 
-    #@tool(response_format="content_and_artifact")
     def searchRegulations(self, query: str):
-        """Busca trechos dos regulamentos, regimentos e normas oficiais da UTFPR (artigos, capítulos e seções).
-        Use para regras, direitos, deveres, critérios, penalidades e prazos regulamentares.
-        Gere uma entrada "query": "frase para busca RAG", apenas a string, sem type ou outras coisas"""
+        """Busca trechos dos regulamentos e normas oficiais da UTFPR: regras, direitos, deveres, critérios, penalidades e prazos.
+        Gere uma entrada "query" com uma frase completa que traga todos os detalhes do que se procura (assunto, situação, condição) em texto corrido como uma pergunta."""
         print(f"Retrieving regulations for query: {query}")
-        retrievedDocs = self.rerank(query, self.articleMultiQuery.invoke(query))
+        retriever = self.articleMultiQuery if USE_MULTI_QUERY else self.articleRetriever
+        retrievedDocs = self.rerank(query, retriever.invoke(query))
         print(f"Retrieved {len(retrievedDocs)} regulation documents.")
         if not retrievedDocs:
             return "Nenhum resultado encontrado.", []
 
         return self.serialize(retrievedDocs), retrievedDocs
 
-    #@tool(response_format="content_and_artifact")
     def searchCalendar(
         self,
         query: str,
-        term: Optional[str] = None,
+        # O modelo manda o período ora como "1", ora como 1; normalizeTerm aceita os dois.
+        term: Optional[Union[str, int]] = None,
         campus: Optional[str] = None,
         year: Optional[int] = None,
+        calem: bool = False,
     ):
         """Busca datas e eventos do calendário acadêmico da UTFPR (matrícula, início e fim das aulas, provas, férias, feriados, prazos de solicitação).
         Use sempre que a pergunta envolver "quando", datas, prazos ou períodos letivos.
         Gere uma entrada "query": "frase para busca RAG", apenas a string.
         Opcionalmente informe "term" com o número do período letivo ("1" ou "2"), "year" com o ano do calendário (ex: 2026) e "campus" com o nome do campus (ex: "Toledo").
+        "calem" escolhe o calendário do CALEM, que tem datas próprias (ex: teste de nivelamento do CALEM): false (padrão) busca no calendário da graduação, true só no do CALEM. Use true apenas se a pergunta citar o CALEM.
         Só filtre pelo que a pergunta disser: filtro errado devolve zero resultados."""
-        print(f"Retrieving calendar events for query: {query} (term={term}, campus={campus}, year={year})")
+        print(f"Retrieving calendar events for query: {query} (term={term}, campus={campus}, year={year}, calem={calem})")
         retrievedDocs = self.rerank(
             query,
-            self.eventRetriever.search(query, term=term, campus=campus, year=year),
+            self.searchCalendarDocs(query, term=term, campus=campus, year=year, calem=calem),
             topN=EVENT_TOP_N,
         )
         print(f"Retrieved {len(retrievedDocs)} calendar documents.")
@@ -530,123 +745,18 @@ class Rag:
         return self.serialize(retrievedDocs), retrievedDocs
 
 
-    def queryOrRespond(self, state: MyState):
-        llmWithTools = self.llm.bind_tools(self.tools)
-        date = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        systemMessageContent = f"""
-        Data atual: {date}\n\n
-        Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da faculdade UTFPR.
-
-        Você tem duas ferramentas de busca:
-        - searchRegulations: regras, direitos, deveres, critérios e prazos previstos em regulamentos e normas.
-        - searchCalendar: datas e eventos do calendário acadêmico.
-
-        Sempre use as ferramentas antes de responder e use quantas forem necessárias, uma por vez, até reunir toda a informação.
-        Caso uma busca não retorne toda a informação necessária, faça outra busca para o que falta.
-        Quando os resultados já responderem a pergunta, não busque de novo.
-        Se a pergunta se tratar de datas, mas o calendário não deixar explicita, use o regulamento para inferir a data.
-        A entrada é no formato "query": "frase para busca RAG", apenas a string, sem type ou outras coisas."""
-        response = llmWithTools.invoke(
-            [SystemMessage(content=systemMessageContent)] + state["messages"]
-        )
-        print(response)
-        print(response.tool_calls)
-        return {"messages": [response], "rounds": state.get("rounds", 0) + 1}
-
     def shouldContinue(self, state: MyState):
 
         lastMessage = state["messages"][-1]
 
         if not getattr(lastMessage, "tool_calls", None):
-            return "generate"
+            return "answer"
 
         if state.get("rounds", 0) > MAX_ROUNDS:
             print(f"Limite de {MAX_ROUNDS} rodadas atingido, gerando a resposta.")
-            return "generate"
+            return "answer"
 
         return "tools"
-
-
-
-    async def generate(self, state: MyState):
-
-        docs = self.collectDocs(state["messages"])
-
-        docsContent = "\n\n".join(
-            f"[{i}] Fonte: {self.docLabel(doc)}\nConteudo: {doc.page_content}"
-            for i, doc in enumerate(docs, start=1)
-        )
-
-        candidates = [
-            {"content": doc.page_content, "metadata": doc.metadata}
-            for doc in docs
-        ]
-
-        yield {"candidates": candidates}
-
-        # systemMessageContent = (
-        #     """Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da UTFPR.
-        #     Os documentos abaixo apresentam as fontes atualizadas e devem ser consideradas como verdade.
-        #     Cite a fonte quando fornecer a informação, nunca altere o link. Se não souber a resposta ou não haver documentos, diga que não sabe.
-        #     Sempre escreva no formato markdown
-
-
-        #     Documentos:
-        #     \n\n
-        #     """
-        #     f"{docsContent}"
-
-
-        # )
-        #print(docsContent)
-        date = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        systemMessageContent = (
-        f"""
-        Data atual: {date}\n\n
-        Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da UTFPR.
-        Os documentos abaixo apresentam as fontes atualizadas e devem ser consideradas como verdade.
-        Cada documento está numerado. Cite a fonte de cada afirmação com o marcador [n] correspondente, logo depois da informação.
-        - Responda usando apenas o que está nos documentos abaixo.
-        - Se a pergunta tiver várias partes, responda cada parte separadamente e diga
-        explicitamente qual parte não consta nos documentos. Nunca descarte a resposta
-        inteira por causa de uma parte que falta.
-        - Caso a pergunta envolva datas, mas não especifique se é o primeiro ou segundo semestre, responda com a data de ambos os semestres, se houver.
-        - Nunca cite um documento que você não usou e nunca invente números.
-        - Só diga que não sabe se nenhuma parte da pergunta puder ser respondida com os documentos. Antes de dizer isso, releia os documentos.
-        - Sempre escreva no formato markdown
-
-
-        Documentos:
-        \n\n
-        {docsContent}
-        """
-        )
-        #print(systemMessageContent)
-
-
-        messages = state["messages"]
-
-        while (
-            messages
-            and messages[-1].type == "ai"
-            and not getattr(messages[-1], "tool_calls", None)
-        ):
-            messages = messages[:-1]
-
-        conversationMessages = [
-            message
-            for message in messages
-            if message.type in ("human", "system")
-            or (message.type == "ai" and not message.tool_calls)
-        ]
-        prompt = [SystemMessage(systemMessageContent)] + conversationMessages
-       
-        async for chunk in self.llm.astream(prompt):
-            yield {
-                "messages": [chunk]
-            }
-
-
 
     def getRecentMessages(self, threadId, limit=10):
 
@@ -736,11 +846,15 @@ class Rag:
         if not candidates:
             return []
 
+        # Aceita citações como [3], [1, 3] e [7, Parágrafo único]; só os números contam.
         cited = []
-        for number in re.findall(r"\[(\d+)\]", answer or ""):
-            index = int(number) - 1
-            if 0 <= index < len(candidates) and index not in cited:
-                cited.append(index)
+        for group in re.findall(r"\[([^\[\]]+)\]", answer or ""):
+            for number in (part.strip() for part in group.split(",")):
+                if not number.isdigit():
+                    continue
+                index = int(number) - 1
+                if 0 <= index < len(candidates) and index not in cited:
+                    cited.append(index)
 
         if cited:
             return [candidates[index] for index in cited]
@@ -779,67 +893,267 @@ class Rag:
 
         return candidates
 
-    async def run(self, message, sessionId, persist=True):
+    def docKey(self, doc: Document):
+        return doc.metadata.get("id") or doc.page_content
 
-        history = self.getRecentMessages(sessionId) if persist else []
+    def decompose(self, question: str) -> List[str]:
+        """Subperguntas que, respondidas, cobrem a pergunta inteira."""
 
-        stateMessages = history + [
-            {"role": "user", "content": message}
-        ]
+        try:
+            text = self.decomposeChain.invoke(
+                {"question": question, "max": MAX_SUBQUESTIONS}
+            )
+        except Exception as error:
+            print(f"decomposicao falhou, seguindo so com a pergunta original: {error}")
+            return [question]
+
+        lines = []
+        seen = set()
+
+        for line in text.splitlines():
+            line = re.sub(r"^[\s\-\*\d\.\)]+", "", line).strip()
+            key = line.lower()
+
+            if not line or key in seen:
+                continue
+
+            seen.add(key)
+            lines.append(line)
+
+        # Descarta linhas que não são perguntas (ex.: "Subperguntas:").
+        questions = [line for line in lines if line.endswith("?")] or lines
+
+        return questions[:MAX_SUBQUESTIONS] or [question]
+
+    def candidateKey(self, candidate: dict):
+        return candidate["metadata"].get("id") or candidate["content"]
+
+    def subquestionSystemPrompt(self, question: str, subquestion: str = None) -> str:
+
+        # Numa subpergunta, a pergunta completa vai junto como contexto.
+        intro = "Você responde a pergunta do usuário sobre os documentos oficiais."
+        search = "Caso a pergunta tenha mais de um assunto, faça uma busca para cada assunto."
+        if subquestion and subquestion.strip() != question.strip():
+            intro += f"""
+
+        A pergunta que você recebeu é parte de uma pergunta maior do usuário, abaixo. Use a pergunta maior para completar o que a sua pergunta deixar implícito, como condições e tipo de informação, nas buscas e na resposta, mas responda só a pergunta que você recebeu.
+        Pergunta completa do usuário: {question}"""
+        
+            search = "Verifique na pergunta completa se há condições, exceções ou detalhes que a subpergunta não menciona, e use-os na busca e na resposta."
+
+        date = datetime.now().strftime("%d/%m/%Y")
+        return f"""
+        Data atual: {date}\n\n
+        {intro}
+
+        Você tem duas ferramentas de busca:
+        - searchRegulations: regras, direitos, deveres, critérios, prazos gerais que não estão no calendário (busque primeiro no calendário).
+        - searchCalendar: datas, prazos e eventos. Busca no calendário da graduação; só passe calem=true se a pergunta for sobre o CALEM.
+
+        Busca:
+        - Sempre use as ferramentas antes de responder e use quantas forem necessárias.
+        - Se a resposta da subpergunta não vier, faça uma nova busca usando outros termos.
+        - Se a subpergunta envolver datas e eventos, mas não especificar o período letivo, faça uma busca por período (1 e 2).
+        - Se a subpergunta se tratar de datas, mas o calendário não deixar explicita, busque no regulamento.
+        - {search}
+
+        Resposta:
+        - Responda só o que a subpergunta pede, de forma direta.
+        - No que a subpergunta pede, seja completo e preciso: reproduza números, prazos, percentuais, condições, exceções e incisos exatamente como estão nos documentos.
+        - Os documentos devolvidos pelas buscas vêm como "Documento [3]: Art. 55 do ...". Cite o número do documento entre colchetes logo depois da informação, por exemplo: "o prazo é de 5 (cinco) dias úteis [3]". O número entre colchetes é sempre o do documento, nunca o do artigo: para o Documento [3], que é o Art. 55, escreva [3], e não [55] nem [Art. 55]. Nunca escreva "[n]".
+        - Responda usando apenas o que está nos documentos e diga explicitamente o que a subpergunta pede e não consta neles.
+        - Caso a subpergunta envolva datas, mas não especifique se é o primeiro ou segundo semestre, responda com a data de ambos os semestres.
+        - Nunca invente números e não escreva introdução nem conclusão.
+        """
+
+    def searchOrAnswer(self, state: MyState):
+        llmWithTools = self.searchLlm.bind_tools(self.tools)
+        subquestion = state["messages"][0].content
+        prompt = [
+            SystemMessage(content=self.subquestionSystemPrompt(state.get("question") or subquestion, subquestion))
+        ] + state["messages"]
+
+        response = llmWithTools.invoke(prompt)
+
+        # Força ao menos uma busca por subpergunta.
+        searched = any(message.type == "tool" for message in state["messages"])
+
+        if not searched and not response.tool_calls:
+            print("  agente respondeu sem buscar, pedindo uma busca")
+            response = llmWithTools.invoke(prompt + [
+                response,
+                HumanMessage("Você ainda não fez nenhuma busca. Antes de responder, chame uma das ferramentas de busca."),
+            ])
+
+        if not searched and not response.tool_calls:
+            print("  agente seguiu sem buscar, buscando pela subpergunta")
+            response = AIMessage(content="", tool_calls=[{
+                "name": "searchRegulations",
+                "args": {"query": subquestion},
+                "id": str(uuid.uuid4()),
+                "type": "tool_call",
+            }])
+
+        usage = getattr(response, "usage_metadata", None) or {}
+        print(f"  agente da subpergunta: {usage.get('input_tokens')} tokens de entrada, "
+              f"tool_calls={response.tool_calls}")
+        return {"messages": [response], "rounds": state.get("rounds", 0) + 1}
+
+    def numberedTools(self, state: MyState):
+        """Roda as buscas pedidas e numera os documentos com ids únicos na pergunta inteira."""
+        candidates = list(state.get("candidates") or [])
+        ids = {
+            self.candidateKey(candidate): position
+            for position, candidate in enumerate(candidates, start=1)
+        }
+        toolsByName = {t.name: t for t in self.tools}
+
+        messages = []
+
+        for call in state["messages"][-1].tool_calls:
+            selected = toolsByName.get(call["name"])
+
+            if selected is None:
+                messages.append(ToolMessage(
+                    content=f"Ferramenta {call['name']} não existe.",
+                    tool_call_id=call["id"],
+                    name=call["name"],
+                ))
+                continue
+
+            # searchCalendar sem query usa a própria subpergunta.
+            args = call.get("args") or {}
+            if not str(args.get("query") or "").strip():
+                print(f"  busca {call['name']} sem query, usando a subpergunta")
+                call = {**call, "args": {**args, "query": state["messages"][0].content}}
+
+            # Argumento inválido volta como erro para o agente.
+            try:
+                toolMessage = selected.invoke({**call, "type": "tool_call"})
+            except Exception as error:
+                print(f"  busca {call['name']} falhou: {error}")
+                messages.append(ToolMessage(
+                    content=f"A busca falhou: {error}. Corrija os argumentos e tente de novo.",
+                    tool_call_id=call["id"],
+                    name=call["name"],
+                ))
+                continue
+
+            docs = getattr(toolMessage, "artifact", None) or []
+
+            for doc in docs:
+                key = self.docKey(doc)
+                if key not in ids:
+                    candidates.append({"content": doc.page_content, "metadata": doc.metadata})
+                    ids[key] = len(candidates)
+
+            if docs:
+                toolMessage.content = "\n\n".join(
+                    f"Documento [{ids[self.docKey(doc)]}]: {self.docLabel(doc)}\n{doc.page_content}"
+                    for doc in docs
+                )
+
+            messages.append(toolMessage)
+
+        return {"messages": messages, "candidates": candidates}
+
+    def forceAnswer(self, state: MyState):
+        """Garante a resposta parcial quando o limite de rodadas corta o agente no meio de uma busca."""
+
+        lastMessage = state["messages"][-1]
+
+        if not getattr(lastMessage, "tool_calls", None):
+            return {}
+
+        question = state.get("question") or state["messages"][0].content
+
+        response = self.searchLlm.invoke(
+            [SystemMessage(content=self.subquestionSystemPrompt(question, state["messages"][0].content))]
+            + state["messages"][:-1]
+            + [HumanMessage("Responda agora a subpergunta com o que as buscas já encontraram.")]
+        )
+        return {"messages": [response]}
+
+    def finalPrompt(self, question: str, partials: List[tuple]) -> list:
+
+        partialsContent = "\n\n".join(
+            f"### Subpergunta {i}: {subquestion}\n{partial}"
+            for i, (subquestion, partial) in enumerate(partials, start=1)
+        )
+
+        date = datetime.now().strftime("%d/%m/%Y")
+        systemMessageContent = f"""
+        Data atual: {date}\n\n
+        Você é um assistente de IA que responde as dúvidas dos usuários sobre os documentos oficiais da UTFPR.
+        A pergunta do usuário foi dividida em subperguntas, e cada uma já foi respondida a partir dos documentos oficiais. As subperguntas e as respostas parciais abaixo são só o contexto para você responder: considere-as verdade, mas não responda as subperguntas uma a uma.
+        - Responda apenas o que a pergunta do usuário pede, usando as respostas parciais como fonte, sem repetir a mesma informação.
+        - Não perca nenhum item das respostas parciais que a pergunta pede: se uma resposta parcial lista casos, condições, documentos ou prazos, todos eles entram na resposta final, com os números, percentuais e exceções.
+        - Se uma resposta parcial disser que algo não consta e outra trouxer essa informação, use a informação.
+        - Seja direto: deixe de fora o que a pergunta não pede, mesmo que esteja nas respostas parciais, e não repita a mesma informação em mais de um lugar.
+        - Mantenha os números de citação de cada informação ([1], [3]...) exatamente como aparecem nas respostas parciais, sem renumerar e sem criar números novos. Nunca use número de artigo como citação e nunca escreva "[n]".
+        - Responda usando apenas o que está nas respostas parciais. Se uma parte da pergunta não consta nelas, diga explicitamente qual parte falta, sem descartar o resto da resposta.
+        - Nunca invente números.
+        - Escreva em markdown direto no texto da resposta, sem colocar a resposta dentro de bloco de código (```).
+
+
+        Contexto (subperguntas e respostas parciais):
+        \n\n
+        {partialsContent}
+        """
+        print(f"prompt final:\n{systemMessageContent}", flush=True)
+        return [SystemMessage(systemMessageContent), HumanMessage(question)]
+
+    async def runDecomposed(self, message, sessionId, persist=True):
 
         if persist:
             self.saveMessage(sessionId, "user", message)
 
-        fullAnswer = ""
+        # Sem decomposição, a própria pergunta é a única subpergunta.
+        subquestions = self.decompose(message) if USE_DECOMPOSE else [message]
+        print(f"subperguntas: {subquestions}")
+
+        # Lista única de documentos: a posição (1-based) é o id citado.
         candidates = []
-        retrieved = []
-        seen = set()
+        partials = []
 
-        async for event in self.graph.astream_events(
-            {"messages": stateMessages, "rounds": 0},
-            version="v1",
-        ):
+        for subquestion in subquestions:
+            print(f"subpergunta: {subquestion}")
+            result = await self.subquestionGraph.ainvoke({
+                "messages": [{"role": "user", "content": subquestion}],
+                "rounds": 0,
+                "candidates": candidates,
+                "question": message,
+            })
 
-            eventType = event["event"]
-            node = event.get("metadata", {}).get("langgraph_node")
+            for toolMessage in result["messages"]:
+                if toolMessage.type == "tool":
+                    yield ("searching", {
+                        "tool": toolMessage.name,
+                        "encontrados": len(getattr(toolMessage, "artifact", None) or []),
+                    })
 
-            if eventType == "on_chat_model_stream" and node in ("generate", None):
-                chunk = event["data"].get("chunk")
+            candidates = result.get("candidates") or candidates
+            partials.append((subquestion, result["messages"][-1].content))
+
+        yield ("steps", [
+            {"subquestion": subquestion, "answer": partial}
+            for subquestion, partial in partials
+        ])
+
+        fullAnswer = ""
+
+        # Com uma subpergunta só, a resposta parcial já é a final.
+        if len(partials) == 1:
+            fullAnswer = partials[0][1]
+            yield ("token", fullAnswer)
+        else:
+            # A junção usa o modelo determinístico das buscas.
+            async for chunk in self.searchLlm.astream(self.finalPrompt(message, partials)):
                 content = getattr(chunk, "content", None)
 
                 if content:
                     fullAnswer += content
                     yield ("token", content)
-
-            elif eventType == "on_chain_stream" and node == "generate":
-                chunk = event["data"].get("chunk")
-
-                if isinstance(chunk, dict) and chunk.get("candidates"):
-                    candidates = chunk["candidates"]
-
-            elif eventType == "on_tool_end":
-                toolMessage = event["data"].get("output")
-                documents = getattr(toolMessage, "artifact", None) or []
-
-                for doc in documents:
-                    key = doc.metadata.get("id") or doc.page_content
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    retrieved.append({
-                        "content": doc.page_content,
-                        "metadata": doc.metadata,
-                    })
-
-                yield ("searching", {
-                    "tool": event.get("name"),
-                    "encontrados": len(documents),
-                })
-
-            await asyncio.sleep(0)
-
-        if not candidates:
-            candidates = retrieved
 
         sources = await self.usedSources(fullAnswer, candidates)
 
@@ -856,11 +1170,17 @@ class Rag:
 
         yield ("sources", sources)
 
+    async def run(self, message, sessionId, persist=True):
+
+        async for item in self.runDecomposed(message, sessionId, persist=persist):
+            yield item
+
     async def answer(self, message, chatHistory, sessionId, persist=True):
 
         fullAnswer = ""
         sources = []
         contexts = []
+        steps = []
 
         async for kind, payload in self.run(message, sessionId, persist=persist):
             if kind == "token":
@@ -869,11 +1189,14 @@ class Rag:
                 contexts = payload
             elif kind == "sources":
                 sources = payload
+            elif kind == "steps":
+                steps = payload
 
         return {
             "answer": fullAnswer,
             "sources": sources,
-            "contexts": contexts
+            "contexts": contexts,
+            "steps": steps
         }
 
     async def answerStream(self, message, chatHistory, sessionId):
@@ -913,23 +1236,3 @@ class Rag:
                 f"event: title\n"
                 f"data: {json.dumps(title)}\n\n"
             )
-
-
-
-
-
-
-
-
-
-    # def fullAnswer(self, message, chatHistory, sessionId):
-    #     config = {"configurable": {"thread_id": sessionId}}
-
-    #     result = self.graph.invoke(
-    #         {"messages": [{"role": "user", "content": message}]},
-    #         stream_mode="values",
-    #         config=config,
-    #     )
-
-    #     resultAnswer = result["messages"]
-    #     return resultAnswer

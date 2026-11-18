@@ -1,0 +1,347 @@
+[
+    {
+        "id": 1,
+        "dificuldade": "simples",
+        "tipo": "artigo_unico",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 35 §5º"
+        ],
+        "question": "Quais são as condições de frequência e nota final para um estudante ser aprovado em uma unidade curricular presencial na graduação da UTFPR?",
+        "ground_truth": "Frequência/participação igual ou superior a 75% das aulas dadas e nota final igual ou superior a 6,0; ou frequência/participação igual ou superior a 50% e nota final igual ou superior a 8,0."
+    },
+    {
+        "id": 3,
+        "dificuldade": "simples",
+        "tipo": "artigo_unico",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 39 §6º"
+        ],
+        "question": "Qual é a nota mínima para ser aprovado em um exame de suficiência na UTFPR?",
+        "ground_truth": "Nota igual ou superior a 6,0."
+    },
+    {
+        "id": 5,
+        "dificuldade": "simples",
+        "tipo": "artigo_unico",
+        "fontes": [
+            "Resolucao Conjunta 01/2020 (Estagios), Art. 3º §3º"
+        ],
+        "question": "Qual é a carga horária mínima de estágio obrigatório para os cursos da UTFPR?",
+        "ground_truth": "400 horas."
+    },
+    {
+        "id": 7,
+        "dificuldade": "simples",
+        "tipo": "artigo_unico",
+        "fontes": [
+            "Resolucao Conjunta 01/2020 (Estagios), Art. 24"
+        ],
+        "question": "Qual é a duração máxima de um estágio na mesma unidade concedente?",
+        "ground_truth": "2 anos, consecutivos ou não, na mesma Unidade Concedente de Estágio (UCE), exceto quando se tratar de estagiário com deficiência."
+    },
+    {
+        "id": 9,
+        "dificuldade": "simples",
+        "tipo": "artigo_unico",
+        "fontes": [
+            "Resolucao COGEP 180/2022 (TCC), Art. 9º"
+        ],
+        "question": "Como deve ser composta a banca examinadora de um TCC de graduação da UTFPR?",
+        "ground_truth": "No mínimo 3 membros: o professor orientador, como presidente da banca; um docente da UTFPR; e uma ou mais pessoas da comunidade interna e/ou externa à UTFPR."
+    },
+    {
+        "id": 11,
+        "dificuldade": "simples",
+        "tipo": "artigo_unico",
+        "fontes": [
+            "Calendario Academico 2026 - Campus Toledo"
+        ],
+        "question": "Quando começa e quando termina o 1º período letivo de 2026 dos cursos de graduação do Campus Toledo?",
+        "ground_truth": "Início em 10 de março de 2026 e término em 13 de julho de 2026."
+    },
+    {
+        "id": 13,
+        "dificuldade": "simples",
+        "tipo": "artigo_unico",
+        "fontes": [
+            "Resolucao Conjunta 01/2020 (Estagios), Art. 7º"
+        ],
+        "question": "Qual é a idade mínima exigida para um aluno da UTFPR realizar estágio?",
+        "ground_truth": "16 anos completos na data de início do estágio."
+    },
+    {
+        "id": 14,
+        "dificuldade": "simples",
+        "tipo": "artigo_unico",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 18 parag. unico"
+        ],
+        "question": "Qual é o número mínimo de estudantes para que uma turma de curso presencial não seja cancelada na UTFPR?",
+        "ground_truth": "10 estudantes requerentes na primeira fase da matrícula. Abaixo disso, a turma de curso presencial pode ser cancelada a critério da coordenação do curso ou da chefia do departamento acadêmico, com anuência da DIRGRAD, exceto quando for a única turma ofertada no campus de uma unidade curricular obrigatória."
+    },
+    {
+        "id": 15,
+        "dificuldade": "simples",
+        "tipo": "artigo_unico",
+        "fontes": [
+            "Resolucao COGEP 180/2022 (TCC), Art. 1º"
+        ],
+        "question": "O TCC é obrigatório em todos os cursos de graduação da UTFPR?",
+        "ground_truth": "Não. A obrigatoriedade segue as Diretrizes Curriculares Nacionais (DCNs) vigentes; se as DCNs do curso não exigirem o TCC, o curso pode optar por incluí-lo no Projeto Pedagógico do Curso (PPC)."
+    },
+    {
+        "id": 17,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 57 e §1º"
+        ],
+        "question": "Em quais situações relacionadas a reprovações e coeficiente de rendimento um estudante da UTFPR pode ser desligado do curso, e quando ele é considerado apenas em risco de desligamento?",
+        "ground_truth": "Desligamento: reprovação em todas as unidades curriculares no período de ingresso; reprovação na mesma unidade curricular 3 vezes por nota e frequência; reprovação em todas as unidades curriculares em 2 semestres letivos consecutivos sem cumprir o plano de estudos; e coeficiente de rendimento absoluto igual ou inferior a 0,300 após decorridos 50% do prazo máximo de conclusão, sem cumprir o plano de estudos. Risco de desligamento: coeficiente de rendimento absoluto igual ou inferior a 0,3 após decorrido um terço do prazo máximo; reprovação em todas as unidades curriculares em qualquer semestre; e reprovação na mesma unidade curricular 2 vezes por nota e frequência."
+    },
+    {
+        "id": 18,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 51 a 55",
+            "Resolucao COGEP 143/2022 (altera o RODP)"
+        ],
+        "question": "Como funciona o jubilamento na UTFPR: quais são os prazos máximos de conclusão, quando cabe dilatação e como se dá o recurso?",
+        "ground_truth": "Jubilamento é o desligamento compulsório de quem não concluiu o curso no prazo máximo. Os prazos são: 18 semestres para cursos com duração de 9 ou mais semestres (redação dada pela Resolução COGEP/UTFPR nº 143/2022); 15 semestres para cursos de 8 semestres; 14 semestres para cursos de 7 semestres; e 12 semestres para cursos de 6 semestres. O período de trancamento não é computado nesses prazos. Os prazos podem ser dilatados em até 50% para estudante público-alvo da educação especial com limitações da capacidade de aprendizagem e em casos de força maior. O jubilamento é precedido de um processo instaurado pela DIRGRAD: está em processo de jubilamento quem não concluiu o curso até o último semestre do prazo máximo, e essa pessoa tem a matrícula bloqueada; quem não requerer prorrogação no limite do Edital de Jubilamento é jubilado automaticamente; a comissão de jubilamento emite parecer e a DIRGRAD publica o resultado por edital, assegurados o contraditório e a ampla defesa. Do parecer da comissão cabe recurso à DIRGRAD em 5 dias úteis contados da publicação, com resposta em 5 dias úteis por edital."
+    },
+    {
+        "id": 20,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 28"
+        ],
+        "question": "Quantas unidades curriculares um estudante da UTFPR pode cursar como enriquecimento curricular por semestre e quais são as restrições?",
+        "ground_truth": "Até 3 unidades curriculares por período letivo, condicionado à existência de vagas e ao limite de carga horária máxima do semestre. O estudante fica dispensado dos pré-requisitos, mas é vedada a matrícula como enriquecimento curricular em estágio curricular obrigatório, trabalho de conclusão de curso e atividades complementares. Essas unidades não dão direito a certificado de conclusão de curso ou diploma."
+    },
+    {
+        "id": 22,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 24"
+        ],
+        "question": "Qual é a ordem de prioridade para o preenchimento de vagas nas turmas de unidades curriculares da graduação da UTFPR e como se dá o desempate?",
+        "ground_truth": "A prioridade é: (I) estudantes formandos; (II) estudantes do próprio curso; (III) estudantes de outro curso; e (IV) matrículas por requerimento, por ordem de chegada, priorizando estudantes de instituições nacionais conveniadas, de instituições estrangeiras conveniadas, egressos da UTFPR, egressos de outras IES e, por fim, estudantes de instituições não conveniadas. Dentro dos grupos II e III, a ordem considera turno, período, dependência, reprovação anterior e o público-alvo da educação especial acompanhado pelo NAPNE. O desempate em cada prioridade é feito pela ordem decrescente de coeficiente de rendimento normalizado."
+    },
+    {
+        "id": 24,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 20"
+        ],
+        "question": "Qual é a diferença entre o coeficiente de rendimento absoluto e o coeficiente de rendimento normalizado na UTFPR e para que cada um é usado?",
+        "ground_truth": "Os dois coeficientes consideram todas as unidades curriculares cursadas, inclusive as de enriquecimento curricular, e constam do histórico escolar. O coeficiente de rendimento absoluto (CR) é a soma das notas finais multiplicadas pela carga horária, dividida por 10 vezes a soma das cargas horárias, e é usado nos editais que envolvem apenas o curso do estudante. O coeficiente de rendimento normalizado (CRN) é calculado por CRN = 0,5 + 0,125 × (CR − média dos CRs do curso) / desvio-padrão dos CRs do curso, com a média e o desvio-padrão apurados semestralmente considerando somente estudantes ativos (em situação regular, em mobilidade, matriculados sub judice ou trancados), e é usado para fins de matrícula e em editais que envolvam mais de um curso. O estágio curricular obrigatório (exceto quando é unidade curricular no PPC) e as atividades complementares não entram no cálculo."
+    },
+    {
+        "id": 25,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao Conjunta 01/2020 (Estagios), Art. 46 (Quadro 01) e Art. 48"
+        ],
+        "question": "Quais relatórios de estágio existem na UTFPR, com que periodicidade devem ser entregues e o que acontece se houver atraso?",
+        "ground_truth": "São quatro: Relatório Parcial de Estágio - Estagiário e Relatório Parcial de Estágio - Supervisor, ambos para estágio obrigatório e não obrigatório, com periodicidade de 6 meses e prazo de entrega de 15 dias; Relatório de Visita à UCE, somente para estágio obrigatório, elaborado pelo orientador após transcorridas 100 horas de estágio, com prazo de 60 dias após o fim do estágio; e Relatório Final de Estágio, para ambos os tipos, ao fim do estágio, com prazo de 10 dias após a aprovação ou 5 dias após o término do semestre letivo, o que ocorrer primeiro. Se os relatórios não forem entregues em até 45 dias após o prazo, o PRAE solicita à DIREC o cancelamento do TCE ou não dá andamento a termo aditivo ou novo TCE."
+    },
+    {
+        "id": 27,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao Conjunta 01/2020 (Estagios), Art. 56 e Art. 17"
+        ],
+        "question": "Quais documentos um aluno que trabalha precisa apresentar para validar sua atividade profissional como estágio obrigatório na UTFPR?",
+        "ground_truth": "Conforme a condição: empregado — cópia do contrato de trabalho e declaração da organização em papel timbrado dirigida à UTFPR, assinada e carimbada pelo representante legal, indicando cargo e atividades; empresário — cópia do Contrato Social e cartão do CNPJ comprovando participação no quadro societário; autônomo — comprovante de registro na Prefeitura Municipal, comprovante de recolhimento do ISS e carnê de contribuição ao INSS; produtor rural — cópia de nota de produtor. Em todos os casos é exigido também o relato das atividades por meio de Relatório de Estágio."
+    },
+    {
+        "id": 28,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao Conjunta 01/2020 (Estagios), Art. 26, 27, 28, 31 e 32"
+        ],
+        "question": "Quem é responsável pelo pagamento da bolsa e pela contratação do seguro contra acidentes pessoais no estágio da UTFPR?",
+        "ground_truth": "A bolsa ou outra contraprestação é oferecida pela Unidade Concedente de Estágio (UCE), sendo compulsória, junto com o auxílio-transporte, no estágio não obrigatório. O seguro contra acidentes pessoais deve ser contratado pela UCE, diretamente ou em atuação conjunta com Agentes de Integração, sendo compulsório no estágio não obrigatório e optativo no obrigatório. No estágio obrigatório, quando a UCE não contratar o seguro, a UTFPR pode assumir essa responsabilidade, cabendo à DIRPLAD providenciá-lo."
+    },
+    {
+        "id": 30,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao COGEP 180/2022 (TCC), Art. 6º e Art. 8º"
+        ],
+        "question": "O que são as Normas Complementares de TCC na UTFPR e quais resultados mínimos do TCC precisam ser avaliados?",
+        "ground_truth": "São o ato normativo aprovado pelo colegiado do curso de graduação que define as regras específicas do TCC. Entre outras definições, estabelecem: o modelo, a estrutura e as características da proposta e do produto final do TCC; os critérios e a forma de avaliação da proposta e os critérios de avaliação do produto final; a possibilidade e os critérios para o TCC em equipe, inclusive multicampi ou interinstitucional, e para a validação do TCC; os documentos, procedimentos e prazos de operacionalização no curso; os critérios de definição e substituição de orientadores, coorientadores e equipes de orientação, e suas atribuições; os deveres dos estudantes matriculados em TCC; a forma e os critérios de avaliação do TCC; e os critérios de convalidação de TCC. O TCC deve ter no mínimo 2 resultados avaliados, a proposta de TCC e o produto final do TCC, e os critérios e procedimentos de avaliação e aprovação ficam nas Normas Complementares."
+    },
+    {
+        "id": 32,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Calendario Academico 2026 - Campus Toledo"
+        ],
+        "question": "Quais são todas as datas relacionadas ao exame de suficiência nos dois períodos letivos de 2026 no Campus Toledo?",
+        "ground_truth": "1º período letivo: início das solicitações em 18/03/2026, data limite para solicitação em 07/04/2026 e data limite para divulgação dos resultados em 22/05/2026. 2º período letivo: início das solicitações em 26/08/2026, data limite para solicitação em 15/09/2026 e data limite para divulgação dos resultados em 30/10/2026."
+    },
+    {
+        "id": 33,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao Conjunta 01/2020 (Estagios), Art. 54 e 55"
+        ],
+        "question": "Em quais situações um aluno pode ser desligado da unidade concedente antes do fim do prazo previsto no TCE?",
+        "ground_truth": "A pedido do aluno, mediante comunicação à UCE; por iniciativa da UCE, mediante comunicação ao aluno; por iniciativa da UTFPR quando a UCE deixar de cumprir obrigações do instrumento jurídico; quando o aluno infringir normas disciplinares que levem ao seu desligamento do corpo discente; quando ocorrer trancamento de matrícula, desistência, jubilamento ou conclusão do curso; quando o aluno não cumprir obrigações ou prazos do regulamento; e quando o instrumento jurídico entre a UTFPR e a UCE for rescindido."
+    },
+    {
+        "id": 34,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao COGEP 180/2022 (TCC), Art. 17 e Art. 18"
+        ],
+        "question": "Como ficam os direitos de propriedade intelectual quando um TCC da UTFPR resulta em patente?",
+        "ground_truth": "Quando o TCC resultar em patente, a propriedade desta será estabelecida conforme regulamentação específica. Os direitos morais e patrimoniais decorrentes do TCC são regidos pela legislação brasileira de propriedade imaterial e pelo Regulamento de Propriedade Intelectual da UTFPR."
+    },
+    {
+        "id": 41,
+        "dificuldade": "dificil",
+        "tipo": "multi_documento",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 39",
+            "Calendario Academico 2026 - Campus Toledo"
+        ],
+        "question": "Um estudante do Campus Toledo quer requerer exame de suficiência no 1º período letivo de 2026. Qual é o procedimento previsto no regulamento e quais são as datas concretas que ele deve observar?",
+        "ground_truth": "O exame de suficiência deve ser requerido no DERAC, no prazo estabelecido no Calendário Acadêmico. Não pode realizá-lo quem já reprovou por frequência na unidade curricular, e é permitido apenas um exame por unidade curricular. O exame é elaborado e avaliado por banca designada pela coordenação do curso. É aprovado quem obtiver nota igual ou superior a 6,0; o não comparecimento implica reprovação com nota zero, salvo motivo justificado e comprovado. A nota é registrada no histórico escolar e entra no cálculo dos coeficientes de rendimento. No Campus Toledo, no 1º período letivo de 2026, as solicitações começam em 18/03/2026, a data limite para solicitação é 07/04/2026 e a data limite para divulgação dos resultados é 22/05/2026."
+    },
+    {
+        "id": 46,
+        "dificuldade": "dificil",
+        "tipo": "multi_documento",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 47",
+            "Resolucao COGEP 180/2022 (TCC), Art. 10",
+            "Resolucao Conjunta 01/2020 (Estagios), Art. 35 §3º"
+        ],
+        "question": "Como a mobilidade acadêmica entre campi da UTFPR afeta a matrícula, a realização do TCC e a orientação de estágio?",
+        "ground_truth": "A mobilidade entre campi depende da existência de vagas no curso do campus de destino, pode durar no máximo dois semestres letivos, consecutivos ou não, e a matrícula nas unidades curriculares no destino segue plano de estudo e procedimento definidos pela DIRGRAD. No TCC, a atividade pode ser realizada parcial ou integralmente em qualquer campus da UTFPR, e a equipe de orientação deve prever, em comum acordo, a participação de docentes dos campi envolvidos; o discente em mobilidade intercampus pode se matricular e realizar todas as atividades de TCC no campus de destino; fora da mobilidade, a matrícula é no campus de origem. No estágio, em caso de mobilidade acadêmica aceita-se orientador de outro campus, a critério do coordenador do curso de origem."
+    },
+    {
+        "id": 50,
+        "dificuldade": "dificil",
+        "tipo": "multi_documento",
+        "fontes": [
+            "Resolucao COGEP 180/2022 (TCC), Art. 5º e Art. 11",
+            "Resolucao Conjunta 01/2020 (Estagios), Art. 6º e Art. 15"
+        ],
+        "question": "Compare as possibilidades de realização coletiva ou fracionada do TCC e do estágio obrigatório na UTFPR: o TCC pode ser feito em equipe e o estágio pode ser dividido entre empresas?",
+        "ground_truth": "O TCC pode ser desenvolvido individualmente ou em equipe, com participação de discentes de diferentes cursos, campi da UTFPR e/ou instituições de ensino, conforme critérios das Normas Complementares de TCC. O Estágio Obrigatório é individual, mas pode ser desenvolvido em mais de uma Unidade Concedente de Estágio, sendo o tempo mínimo de atuação em cada uma definido no PPC do curso; a complementação em outra UCE exige aprovação de novo Plano de Estágio e assinatura de termo aditivo ou novo TCE."
+    },
+    {
+        "id": 51,
+        "dificuldade": "simples",
+        "tipo": "artigo_unico",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 49"
+        ],
+        "question": "Por quanto tempo, no máximo, pode ser concedido o trancamento de matrícula no curso de graduação da UTFPR?",
+        "ground_truth": "No máximo 4 períodos letivos no regime semestral e 2 períodos letivos no regime anual, consecutivos ou não."
+    },
+    {
+        "id": 52,
+        "dificuldade": "simples",
+        "tipo": "artigo_unico",
+        "fontes": [
+            "Resolucao Conjunta 01/2020 (Estagios), Art. 37"
+        ],
+        "question": "Qual é o número máximo de estagiários que um mesmo Professor Orientador pode orientar na UTFPR?",
+        "ground_truth": "10 estagiários."
+    },
+    {
+        "id": 53,
+        "dificuldade": "simples",
+        "tipo": "artigo_unico",
+        "fontes": [
+            "Resolucao COGEP 180/2022 (TCC), Art. 4º"
+        ],
+        "question": "Qual é o número mínimo de orientadores exigido para o TCC de graduação da UTFPR?",
+        "ground_truth": "No mínimo 1 docente do quadro de servidores da UTFPR. Quando o TCC é desenvolvido em programa de mobilidade institucional, a orientação segue o determinado pela instituição de destino."
+    },
+    {
+        "id": 54,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao Conjunta 01/2020 (Estagios), Art. 22 e Art. 23"
+        ],
+        "question": "Qual é a jornada máxima de estágio para um estudante do ensino superior da UTFPR e a partir de que duração o estágio dá direito a recesso?",
+        "ground_truth": "A jornada não pode ultrapassar 6 horas diárias e 30 horas semanais; nos cursos que alternam teoria e prática, nas semanas em que não há aulas presenciais programadas, a jornada pode chegar a 40 horas semanais. Estágios com duração prevista igual ou superior a um ano devem contemplar período de recesso de 30 dias, concedido preferencialmente junto às férias escolares."
+    },
+    {
+        "id": 55,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 21 §2º e §3º"
+        ],
+        "question": "Qual é a carga horária máxima que um estudante da UTFPR pode cursar em um semestre e em que condição ele fica liberado do pré-requisito de uma unidade curricular?",
+        "ground_truth": "A carga horária máxima é a do período com maior carga horária na matriz curricular somada a 90 horas, não excedendo 600 horas no semestre. Fica liberado do pré-requisito o estudante que já tenha cursado a unidade curricular pré-requisito e tenha coeficiente de rendimento normalizado igual ou superior a 0,5, nota final igual ou superior a 4,0 e, nas unidades curriculares presenciais, frequência mínima de 75%."
+    },
+    {
+        "id": 56,
+        "dificuldade": "media",
+        "tipo": "multi_artigo",
+        "fontes": [
+            "Resolucao 81/2019-COGEP (RODP), Art. 27"
+        ],
+        "question": "Em quais situações um estudante da UTFPR pode requerer convalidação de unidades curriculares e como são obtidas a nota e a frequência quando mais de uma unidade curricular cursada é usada na convalidação?",
+        "ground_truth": "Pode requerer o estudante que cursou unidades curriculares: em outros cursos superiores da UTFPR; em cursos superiores de outra instituição, anteriormente ao ingresso no curso da UTFPR; em cursos superiores de instituição com a qual há acordo de mobilidade acadêmica e/ou dupla diplomação; e em instituição sem acordo de mobilidade, desde que previamente aprovado um plano de estudos pela coordenação do curso, ouvido o colegiado do curso. A convalidação é o aproveitamento de unidades curriculares em que o estudante foi aprovado, cursadas no mesmo nível de ensino ou superior, e exige similaridade de conteúdos e de carga horária com as unidades curriculares da matriz do curso. Quando mais de uma unidade curricular cursada é utilizada na convalidação, a nota e a frequência são obtidas pela média ponderada das notas e das frequências/participações, considerando a carga horária das unidades curriculares cursadas. Nos cursos presenciais a média ponderada vale para a nota e para a frequência (Equações 3 e 4); nos cursos a distância, só para a nota (Equação 3). Conceitos devem ser convertidos em notas e, sem informação de frequência/participação, considera-se 75%. Quando não for feita automaticamente pelo sistema, a convalidação é analisada pela coordenação do curso."
+    },
+    {
+        "question": "Perdi uma prova porque estava doente e, em outra disciplina, discordo da nota que recebi. Como faço para pedir a segunda chamada e a revisão da prova na UTFPR, quais são os prazos e quem analisa cada pedido?",
+        "ground_truth": "Segunda chamada: pode ser requerida por motivo de doença ou força maior, uma única vez por avaliação no período letivo; o requerimento, com documentação comprobatória, deve ser protocolado no DERAC até 5 dias úteis após a realização da avaliação; a análise é feita pela coordenação do curso, que comunica o resultado ao professor, e o professor define os conteúdos e a data da avaliação. Revisão: o requerimento deve ser protocolado no DERAC em 5 dias úteis após a divulgação do resultado da avaliação; a análise é feita pela coordenação do curso, e a revisão é efetuada por banca de três professores designada pela coordenação, excluídos os professores da unidade curricular e turma da avaliação; a banca tem 15 dias, excetuando recesso acadêmico e férias docentes, para divulgar o resultado, que é informado por parecer fundamentado ao estudante e ao professor após homologação da coordenação."
+    },
+    {
+        "question": "Até quando posso cancelar a matrícula em uma disciplina no 2º período letivo de 2026 no Campus Toledo, quantas vezes posso cancelar a mesma disciplina e em que situações dá para cancelar fora do prazo?",
+        "ground_truth": "No Campus Toledo, a data limite para solicitação de cancelamento de matrícula em disciplinas no 2º período letivo de 2026 é 25/08/2026. O cancelamento é permitido uma única vez em cada unidade curricular, até o prazo limite do calendário acadêmico, e é feito pelo próprio estudante de forma automática no sistema acadêmico, exceto para o estudante ingressante. Fora do prazo, o cancelamento pode ser feito para realizar estágio curricular, obrigatório ou não, por trabalho ou por motivos de força maior devidamente comprovados, desde que autorizado pela coordenação do curso e que o fato tenha ocorrido após o período de matrícula. Em qualquer caso, o estudante deve cursar no mínimo uma unidade curricular no período letivo, exceto quando o cancelamento for para viabilizar o estágio curricular obrigatório."
+    },
+    {
+        "question": "Sou calouro na UTFPR. Posso trancar o curso já no meu primeiro semestre? Em quais casos isso é permitido e, se eu precisar trancar por mais tempo do que o limite, o que posso fazer?",
+        "ground_truth": "O trancamento não é permitido no período em que o estudante ingressou no curso, salvo: por doença do próprio estudante, comprovada e com homologação pelo NUAPE; por doença do cônjuge, companheiro, filho ou parente em linha reta até o primeiro grau, quando a assistência direta do estudante for indispensável, comprovada e homologada pelo NUAPE; para o serviço militar; por ingresso após transcorrido mais de 25% do total de aulas do período letivo; e por outros motivos de força maior, a critério da DIRGRAD. O tempo máximo de trancamento é de 4 períodos letivos no regime semestral e 2 no regime anual, consecutivos ou não. Trancamentos adicionais além desse limite podem ser requeridos para estudos no exterior não vinculados a programas de mobilidade, por motivos de saúde ou de força maior devidamente comprovados, com análise da DIRGRAD."
+    },
+    {
+        "question": "Reprovei em uma disciplina com nota final 5 e frequência de 80%. Posso cursá-la de novo sem precisar assistir às aulas? Quais são as condições para cursar uma disciplina sem presença obrigatória e em quantas disciplinas posso me matricular sem presença obrigatória por semestre?",
+        "ground_truth": "Sim. Pode cursar como estudante sem presença obrigatória quem foi reprovado na unidade curricular com nota final igual ou superior a 4,0 e frequência/participação mínima de 75%, desde que haja turma com vagas destinadas a estudantes sem presença obrigatória, ofertada pela DIRGRAD a critério da coordenação do curso, em unidades curriculares definidas pelo colegiado do curso. O estudante deve optar por essa condição no momento da matrícula e fazer todas as avaliações previstas no Planejamento de Aulas da turma; em caso de sobreposição de avaliações presenciais, tem direito a segunda chamada. Por período letivo, pode se matricular em no máximo 2 unidades curriculares nessa condição, e a carga horária delas conta para a carga horária máxima do semestre."
+    },
+    {
+        "question": "Quero fazer meu estágio obrigatório em uma empresa no exterior por conta própria, sem convênio com universidade parceira. O que preciso providenciar na UTFPR antes de começar?",
+        "ground_truth": "O processo deve seguir trâmites análogos aos do estágio realizado no Brasil: a empresa deve estar cadastrada e homologada no sistema de estágio da UTFPR, conforme o Art. 14 (a homologação pode ser não presencial quando a UCE estiver em localidade distinta, inclusive no exterior); o Plano de Estágio deve ser aprovado antes do início das atividades; o Termo de Compromisso de Estágio Internacional deve ser assinado antes do início, sendo aceitos também termos elaborados por empresa estrangeira ou agente de integração, desde que previamente analisados e autorizados pela PROREC; a documentação comprobatória do seguro deve ser anexada ao TCE, e no estágio obrigatório o seguro pode ser custeado pela UTFPR; o professor orientador deve acompanhar periodicamente as atividades, podendo fazê-lo de forma indireta."
+    },
+    {
+        "question": "Sou bolsista de iniciação científica em um projeto de pesquisa da UTFPR. Posso usar essa atividade como estágio obrigatório? Quem seriam meu supervisor e meu orientador e quais documentos preciso apresentar?",
+        "ground_truth": "Sim, desde que a atividade atenda à área de formação profissional e à carga horária previstas no PPC e seja realizada a partir do período mínimo do curso (atividades de extensão desenvolvidas para a integralização do curso ficam excluídas). O aluno deve ter um plano de atividades com cronograma e um termo de aceitação, se bolsista, ou termo de adesão, se voluntário. O responsável pelo aluno no programa ou projeto faz o papel de supervisor de estágio, e outro docente faz o papel de orientador. Cabe ao PRAE verificar os documentos comprobatórios. Mantêm-se a carga horária mínima prevista no PPC e a necessidade de Plano de Estágio, relatórios e avaliação pelo orientador, e essa modalidade fica isenta dos instrumentos jurídicos (TCE)."
+    },
+    {
+        "question": "Consegui um estágio obrigatório que começa daqui a duas semanas. Com quanta antecedência e para quem tenho que entregar o Plano de Estágio, o que ele precisa conter e em quanto tempo sou matriculado na disciplina de estágio?",
+        "ground_truth": "O Plano de Estágio deve ser apresentado ao PRAE no prazo mínimo de 5 dias úteis antes da data prevista para o início do estágio, para análise e aprovação; o prazo vale tanto para TCE novo quanto para termo aditivo, e a aprovação do plano é condição para a assinatura do instrumento jurídico com a UCE, com interveniência da UTFPR. Se o estágio começar nas férias docentes, a documentação deve preferencialmente ser providenciada antes delas. O plano deve conter pelo menos dados do aluno, do supervisor e do professor orientador, endereço do local de estágio, horário detalhado, carga horária semanal e total, datas de início e fim, plano de atividades e as assinaturas do aluno, do supervisor, do orientador e do PRAE. A matrícula na disciplina é efetivada pelo PRAE no sistema acadêmico em até 7 dias após ele ser informado da assinatura completa do TCE e do Plano de Estágio."
+    },
+    {
+        "question": "Quando começa e quando termina o 2º período letivo de 2026 dos cursos de graduação do Campus Toledo, quantos dias letivos ele tem no total e até quando posso entregar as atividades complementares e pedir mudança de matriz nesse período?",
+        "ground_truth": "O 2º período letivo de 2026 no Campus Toledo começa em 18/08/2026 (com recepção aos calouros em 17/08/2026) e termina em 19/12/2026. Ele tem 107 dias letivos: 19 em agosto, 25 em setembro, 25 em outubro, 22 em novembro e 16 em dezembro. A data limite para entrega das documentações comprobatórias das atividades complementares ao professor responsável e para solicitação de mudança de matriz em cursos de mesma denominação, válida para o próximo período letivo, é 30/11/2026."
+    },
+    {
+        "question": "Fui desligado do curso porque não fiz minha matrícula no prazo. Consigo voltar para a UTFPR? Como e quando posso pedir o retorno e quando eu voltaria a estudar?",
+        "ground_truth": "O desligamento por não efetuar a matrícula no período estabelecido (inciso VIII do Art. 57) permite protocolar requerimento de reingresso no semestre letivo em que ocorreu o desligamento, devidamente justificado e acompanhado de documentação que comprove os motivos, respeitando o prazo máximo de conclusão do curso (o tempo em que ficou desligado conta nesse prazo). O requerimento é analisado pela coordenação do curso e homologado pela DIRGRAD; se deferido, o estudante é reintegrado no período letivo seguinte. Em curso não presencial, a reintegração depende ainda da oferta do curso ou das unidades curriculares no polo de apoio presencial; se não houver, o estudante pode ser reintegrado em outro polo ou campus onde seja possível concluir o curso, condicionado a vagas e à aprovação da coordenação do curso e do polo de destino ou da coordenação do curso e da DIRGRAD do campus de destino. Se for provável formando, faltando apenas estágio curricular obrigatório, TCC e atividades complementares, o reingresso é concedido no período letivo corrente."
+    },
+    {
+        "question": "Meu TCC usa dados sigilosos de uma empresa. Ele vai ser publicado no repositório da UTFPR? O que é obrigatório depositar e como fica o sigilo, inclusive na defesa?",
+        "ground_truth": "O produto final do TCC terá obrigatoriamente um resumo depositado no Repositório Institucional da UTFPR (RIUT). Quando for um texto acadêmico completo, poderá ser depositado integralmente a critério dos autores, da banca examinadora e das Normas Complementares de TCC, seguindo a legislação e o ato normativo vigentes. A UTFPR pode disponibilizar os TCCs depositados no RIUT em mídias diversas, bibliotecas e internet, mas as condições para embargo dos TCCs e para a disponibilização dos metadados, quando houver necessidade de sigilo, respeitam a legislação e o ato normativo vigentes. A avaliação final é feita em defesa pública perante banca examinadora, respeitando-se a necessidade de sigilo de dados, quando couber."
+    }
+]

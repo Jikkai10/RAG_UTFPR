@@ -1,0 +1,341 @@
+{
+    "judge_model": "gemma4:31b",
+    "context_source": "all",
+    "n_examples": 40,
+    "media": {
+        "faithfulness": 0.9573683261183261,
+        "answer_relevancy": 0.9192584314008144,
+        "context_precision": 0.7799999999291249,
+        "context_recall": 0.8876785714285715,
+        "answer_correctness": 0.7864025268840974
+    },
+    "falhas": {
+        "faithfulness": 0,
+        "answer_relevancy": 0,
+        "context_precision": 0,
+        "context_recall": 0,
+        "answer_correctness": 0
+    },
+    "por_exemplo": [
+        {
+            "question": "Quais são as condições de frequência e nota final para um estudante ser aprovado em uma unidade curricular presencial na graduação da UTFPR?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9403674947511663,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.8436760759999408
+        },
+        {
+            "question": "Qual é a nota mínima para ser aprovado em um exame de suficiência na UTFPR?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9483363211167869,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.9759393710353981
+        },
+        {
+            "question": "Qual é a carga horária mínima de estágio obrigatório para os cursos da UTFPR?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9986375845534757,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.9652769477129384
+        },
+        {
+            "question": "Qual é a duração máxima de um estágio na mesma unidade concedente?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9597934987876598,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.9971241899450285
+        },
+        {
+            "question": "Como deve ser composta a banca examinadora de um TCC de graduação da UTFPR?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9029539028281718,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.9979309782924956
+        },
+        {
+            "question": "Quando começa e quando termina o 1º período letivo de 2026 dos cursos de graduação do Campus Toledo?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9820906670094732,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.9918113467301413
+        },
+        {
+            "question": "Qual é a idade mínima exigida para um aluno da UTFPR realizar estágio?",
+            "faithfulness": 0.25,
+            "answer_relevancy": 0.977298493619078,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.5411594740655497
+        },
+        {
+            "question": "Qual é o número mínimo de estudantes para que uma turma de curso presencial não seja cancelada na UTFPR?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9363613961496354,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.5344795624459352
+        },
+        {
+            "question": "O TCC é obrigatório em todos os cursos de graduação da UTFPR?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9289682758832886,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.846448530612441
+        },
+        {
+            "question": "Em quais situações relacionadas a reprovações e coeficiente de rendimento um estudante da UTFPR pode ser desligado do curso, e quando ele é considerado apenas em risco de desligamento?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9617767468823977,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.6723027392157932
+        },
+        {
+            "question": "Como funciona o jubilamento na UTFPR: quais são os prazos máximos de conclusão, quando cabe dilatação e como se dá o recurso?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9383879631146064,
+            "context_precision": 0.49999999995,
+            "context_recall": 0.8333333333333334,
+            "answer_correctness": 0.8518562374216591
+        },
+        {
+            "question": "Quantas unidades curriculares um estudante da UTFPR pode cursar como enriquecimento curricular por semestre e quais são as restrições?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9902694545717825,
+            "context_precision": 0.99999999995,
+            "context_recall": 1.0,
+            "answer_correctness": 0.895136422926865
+        },
+        {
+            "question": "Qual é a ordem de prioridade para o preenchimento de vagas nas turmas de unidades curriculares da graduação da UTFPR e como se dá o desempate?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9956604717566174,
+            "context_precision": 0.49999999995,
+            "context_recall": 1.0,
+            "answer_correctness": 0.5477948902513012
+        },
+        {
+            "question": "Qual é a diferença entre o coeficiente de rendimento absoluto e o coeficiente de rendimento normalizado na UTFPR e para que cada um é usado?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9550318261396137,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.6392594983100319
+        },
+        {
+            "question": "Quais relatórios de estágio existem na UTFPR, com que periodicidade devem ser entregues e o que acontece se houver atraso?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.945609460668971,
+            "context_precision": 0.49999999995,
+            "context_recall": 0.75,
+            "answer_correctness": 0.6510499916918115
+        },
+        {
+            "question": "Quais documentos um aluno que trabalha precisa apresentar para validar sua atividade profissional como estágio obrigatório na UTFPR?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9531086773178273,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.8809050589345238
+        },
+        {
+            "question": "Quem é responsável pelo pagamento da bolsa e pela contratação do seguro contra acidentes pessoais no estágio da UTFPR?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.0,
+            "context_precision": 0.49999999995,
+            "context_recall": 0.0,
+            "answer_correctness": 0.4687571662124813
+        },
+        {
+            "question": "O que são as Normas Complementares de TCC na UTFPR e quais resultados mínimos do TCC precisam ser avaliados?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.972334715562544,
+            "context_precision": 0.99999999995,
+            "context_recall": 1.0,
+            "answer_correctness": 0.8776345884939163
+        },
+        {
+            "question": "Quais são todas as datas relacionadas ao exame de suficiência nos dois períodos letivos de 2026 no Campus Toledo?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.8732175681415749,
+            "context_precision": 0.0,
+            "context_recall": 1.0,
+            "answer_correctness": 0.9827642488072998
+        },
+        {
+            "question": "Em quais situações um aluno pode ser desligado da unidade concedente antes do fim do prazo previsto no TCE?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9493658090830164,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.8579436186299996
+        },
+        {
+            "question": "Como ficam os direitos de propriedade intelectual quando um TCC da UTFPR resulta em patente?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9224828060760396,
+            "context_precision": 0.99999999995,
+            "context_recall": 1.0,
+            "answer_correctness": 0.9968461376959007
+        },
+        {
+            "question": "Um estudante do Campus Toledo quer requerer exame de suficiência no 1º período letivo de 2026. Qual é o procedimento previsto no regulamento e quais são as datas concretas que ele deve observar?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.960953870032269,
+            "context_precision": 0.499999999975,
+            "context_recall": 1.0,
+            "answer_correctness": 0.8918535994833466
+        },
+        {
+            "question": "Como a mobilidade acadêmica entre campi da UTFPR afeta a matrícula, a realização do TCC e a orientação de estágio?",
+            "faithfulness": 0.7272727272727273,
+            "answer_relevancy": 0.9817331273542567,
+            "context_precision": 0.99999999995,
+            "context_recall": 0.6,
+            "answer_correctness": 0.45959525708082405
+        },
+        {
+            "question": "Compare as possibilidades de realização coletiva ou fracionada do TCC e do estágio obrigatório na UTFPR: o TCC pode ser feito em equipe e o estágio pode ser dividido entre empresas?",
+            "faithfulness": 0.8888888888888888,
+            "answer_relevancy": 0.8092322122904214,
+            "context_precision": 0.0,
+            "context_recall": 0.0,
+            "answer_correctness": 0.3354319122226269
+        },
+        {
+            "question": "Por quanto tempo, no máximo, pode ser concedido o trancamento de matrícula no curso de graduação da UTFPR?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.945032902448177,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.9924285374920935
+        },
+        {
+            "question": "Qual é o número máximo de estagiários que um mesmo Professor Orientador pode orientar na UTFPR?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9531590838619581,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.9801993290989743
+        },
+        {
+            "question": "Qual é o número mínimo de orientadores exigido para o TCC de graduação da UTFPR?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9323049789154118,
+            "context_precision": 0.49999999995,
+            "context_recall": 1.0,
+            "answer_correctness": 0.7437506489036122
+        },
+        {
+            "question": "Qual é a jornada máxima de estágio para um estudante do ensino superior da UTFPR e a partir de que duração o estágio dá direito a recesso?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9556358769804832,
+            "context_precision": 0.0,
+            "context_recall": 1.0,
+            "answer_correctness": 0.799863722019129
+        },
+        {
+            "question": "Qual é a carga horária máxima que um estudante da UTFPR pode cursar em um semestre e em que condição ele fica liberado do pré-requisito de uma unidade curricular?",
+            "faithfulness": 0.42857142857142855,
+            "answer_relevancy": 0.9598950759211115,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.9358793411113346
+        },
+        {
+            "question": "Em quais situações um estudante da UTFPR pode requerer convalidação de unidades curriculares e como são obtidas a nota e a frequência quando mais de uma unidade curricular cursada é usada na convalidação?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9885115972897972,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.7196964748342668
+        },
+        {
+            "question": "Perdi uma prova porque estava doente e, em outra disciplina, discordo da nota que recebi. Como faço para pedir a segunda chamada e a revisão da prova na UTFPR, quais são os prazos e quem analisa cada pedido?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9432299830859648,
+            "context_precision": 0.0,
+            "context_recall": 1.0,
+            "answer_correctness": 0.9035123724283418
+        },
+        {
+            "question": "Até quando posso cancelar a matrícula em uma disciplina no 2º período letivo de 2026 no Campus Toledo, quantas vezes posso cancelar a mesma disciplina e em que situações dá para cancelar fora do prazo?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9686304152908152,
+            "context_precision": 0.7499999999625,
+            "context_recall": 1.0,
+            "answer_correctness": 0.8880831582349493
+        },
+        {
+            "question": "Sou calouro na UTFPR. Posso trancar o curso já no meu primeiro semestre? Em quais casos isso é permitido e, se eu precisar trancar por mais tempo do que o limite, o que posso fazer?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.8857375253686591,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.9943187113793308
+        },
+        {
+            "question": "Reprovei em uma disciplina com nota final 5 e frequência de 80%. Posso cursá-la de novo sem precisar assistir às aulas? Quais são as condições para cursar uma disciplina sem presença obrigatória e em quantas disciplinas posso me matricular sem presença obrigatória por semestre?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9369761399984146,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.5925609032123544
+        },
+        {
+            "question": "Quero fazer meu estágio obrigatório em uma empresa no exterior por conta própria, sem convênio com universidade parceira. O que preciso providenciar na UTFPR antes de começar?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9607227929004027,
+            "context_precision": 0.9999999999,
+            "context_recall": 0.8571428571428571,
+            "answer_correctness": 0.8483807460875666
+        },
+        {
+            "question": "Sou bolsista de iniciação científica em um projeto de pesquisa da UTFPR. Posso usar essa atividade como estágio obrigatório? Quem seriam meu supervisor e meu orientador e quais documentos preciso apresentar?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9263743059330404,
+            "context_precision": 0.4499999999775,
+            "context_recall": 0.8333333333333334,
+            "answer_correctness": 0.734493034573023
+        },
+        {
+            "question": "Consegui um estágio obrigatório que começa daqui a duas semanas. Com quanta antecedência e para quem tenho que entregar o Plano de Estágio, o que ele precisa conter e em quanto tempo sou matriculado na disciplina de estágio?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.9181621537015042,
+            "context_precision": 0.9999999999,
+            "context_recall": 0.8,
+            "answer_correctness": 0.861319867788008
+        },
+        {
+            "question": "Quando começa e quando termina o 2º período letivo de 2026 dos cursos de graduação do Campus Toledo, quantos dias letivos ele tem no total e até quando posso entregar as atividades complementares e pedir mudança de matriz nesse período?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.932045030345777,
+            "context_precision": 0.0,
+            "context_recall": 0.3333333333333333,
+            "answer_correctness": 0.4178768027903251
+        },
+        {
+            "question": "Fui desligado do curso porque não fiz minha matrícula no prazo. Consigo voltar para a UTFPR? Como e quando posso pedir o retorno e quando eu voltaria a estudar?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.8883092019494429,
+            "context_precision": 0.9999999999,
+            "context_recall": 1.0,
+            "answer_correctness": 0.6839178040189734
+        },
+        {
+            "question": "Meu TCC usa dados sigilosos de uma empresa. Ele vai ser publicado no repositório da UTFPR? O que é obrigatório depositar e como fica o sigilo, inclusive na defesa?",
+            "faithfulness": 1.0,
+            "answer_relevancy": 0.8916378483509462,
+            "context_precision": 0.9999999999,
+            "context_recall": 0.5,
+            "answer_correctness": 0.6568417771733637
+        }
+    ]
+}

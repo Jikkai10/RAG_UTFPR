@@ -7,11 +7,7 @@ FORMULA_MODEL = "PP-FormulaNet_plus-M"
 
 
 class FormulaReader:
-    """Reconhece fórmulas em imagens via PaddleX, devolvendo LaTeX delimitado.
-
-    O modelo é criado na primeira leitura: quem só importa o pacote (a API, por
-    exemplo) não paga o carregamento do PaddleX.
-    """
+    """Reconhece fórmulas em imagens via PaddleX, devolvendo LaTeX delimitado."""
 
     def __init__(self, modelName: str = FORMULA_MODEL):
         self.modelName = modelName

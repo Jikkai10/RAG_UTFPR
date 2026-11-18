@@ -32,6 +32,3 @@ class Neo4jConnection:
 
     def getDriver(self):
         return self._driver
-
-
-#db = Neo4jConnection(URI, USER, PASSWORD)

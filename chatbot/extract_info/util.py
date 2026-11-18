@@ -228,7 +228,9 @@ SET ct.tipo = cont.tipo,
     ct.pagina_inicio = cont.pagina_inicio,
     ct.pagina_fim = cont.pagina_fim,
     ct.bbox = cont.bbox,
-    ct.documento_id = $doc_id
+    ct.documento_id = $doc_id,
+    ct.texto_original = null,
+    ct.alterado_por = null
 
 MERGE (c)-[:HAS_CONT]->(ct)
 
@@ -257,7 +259,9 @@ SET ct.tipo = cont.tipo,
     ct.pagina_inicio = cont.pagina_inicio,
     ct.pagina_fim = cont.pagina_fim,
     ct.bbox = cont.bbox,
-    ct.documento_id = $doc_id
+    ct.documento_id = $doc_id,
+    ct.texto_original = null,
+    ct.alterado_por = null
 
 MERGE (s)-[:HAS_CONT]->(ct)"""
 
@@ -330,11 +334,6 @@ WHERE dest IS NOT NULL
 
 MERGE (orig)-[:REF_NORM]->(dest)
 """
-    # tx.run(query,
-    #        doc_id=doc["id"],
-    #        doc_titulo=doc.get("titulo", ""),
-    #        doc_path=doc["path"],
-    #        capitulos=doc["capitulos"])
     tx.executeQuery(queryResetChunks,
            parameters={
                "doc_id": doc["id"]

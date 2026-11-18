@@ -3,6 +3,8 @@ from typing import Dict, List, Tuple
 
 from unstructured.documents.elements import Image as ImageElement, Table as TableElement
 
+from extract_info.amendments import SIGNATURE_RE
+from extract_info.glossary import expandAcronyms, extractAcronyms
 from extract_info.layout import elementPosition, mergePositions
 from extract_info.tables import getTableText, matchTable, tableRowsToChunks
 
@@ -10,6 +12,8 @@ CAP_RE   = re.compile(r"^\s*Cap[ií]tulo\s+([IVXLCDM]+)\b.*",  re.IGNORECASE)
 SEC_RE   = re.compile(r"^\s*Se[cç][ãa]o\s+([IVXLCDM]+)\b.*", re.IGNORECASE)
 ART_RE   = re.compile(r"^\s*Art(?:igo)?\.?\s*(\d+)[ºo]?\b.*", re.IGNORECASE)
 REF_RE = re.compile(r"\bArt(?:igo)?\.?\s*(\d+)[ºo]?\b", re.IGNORECASE)
+DE_RE    = re.compile(r"^\s*DE\s*:\s*$")
+PARA_RE  = re.compile(r"^\s*PARA\s*:\s*$")
 
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 120
@@ -65,10 +69,22 @@ def organizeChunksByHierarchy(doc, info):
         })
 
 
+def applyAcronyms(doc, acronyms):
+    """Escreve por extenso, em cada artigo e chunk, as siglas que o documento define."""
+
+    for chapter in doc["capitulos"].values():
+        containers = [chapter] + list(chapter["secoes"].values())
+
+        for container in containers:
+            for content in container["conteudos"].values():
+                content["texto"] = expandAcronyms(content["texto"], acronyms)
+
+                for chunk in content["chunks"]:
+                    chunk["texto"] = expandAcronyms(chunk["texto"], acronyms)
+
+
 class HierarchySplitter:
-    """
-    Quebra os elementos do documento na hierarquia capítulo → seção → artigo.
-    """
+    """Quebra os elementos do documento na hierarquia capítulo → seção → artigo."""
 
     def __init__(self, splitter, describe, readFormula):
         self.splitter = splitter
@@ -81,7 +97,8 @@ class HierarchySplitter:
                     article: str,
                     name: str,
                     url: str,
-                    positions: List[Tuple] = None) -> Dict:
+                    positions: List[Tuple] = None,
+                    contentType: str = "artigo") -> Dict:
 
         texts = self.splitter.split_text(longText)
 
@@ -103,7 +120,7 @@ class HierarchySplitter:
             "chunk": texts,
             "refs": refs,
             "path": url,
-            "type": "artigo",
+            "type": contentType,
             "pagina_inicio": startPage,
             "pagina_fim": endPage,
             "bbox": bbox,
@@ -141,6 +158,9 @@ class HierarchySplitter:
         articleLineBuffer = []
         positionBuffer = []
         articleNumber = None
+        # Bloco "DE: ... PARA: ..." aberto: em que parte está e quais artigos ele reescreve.
+        replacement = None
+        replacementCount = 0
 
         def flushArticle():
             nonlocal articleLineBuffer, positionBuffer, articleNumber
@@ -148,7 +168,8 @@ class HierarchySplitter:
                 return
             articleText = "\n".join(articleLineBuffer)
             info = self.extractInfo(articleText, currentChapter, currentSection, articleNumber,
-                                    name, url, positionBuffer)
+                                    name, url, positionBuffer,
+                                    "alteracao" if replacement else "artigo")
             organizeChunksByHierarchy(docs, info)
             articleLineBuffer = []
             positionBuffer = []
@@ -215,6 +236,40 @@ class HierarchySplitter:
             if not text:
                 continue
 
+            # Bloco "DE: ... PARA: ..." reescreve o artigo inteiro: vira um conteúdo só.
+            if DE_RE.match(text):
+                flushArticle()
+                replacementCount += 1
+                articleNumber = f"alt{replacementCount}"
+                replacement = {"stage": "de", "targets": set()}
+                articleLineBuffer.append(text)
+                positionBuffer.append(elementPosition(el))
+                previousLine = ""
+                continue
+
+            if replacement:
+                if SIGNATURE_RE.match(text):
+                    flushArticle()
+                    replacement = None
+                    previousLine = ""
+                    continue
+
+                m = ART_RE.match(text)
+                if replacement["stage"] == "de" and PARA_RE.match(text):
+                    replacement["stage"] = "para"
+                elif m and replacement["stage"] == "de":
+                    replacement["targets"].add(m.group(1))
+                elif m and m.group(1) not in replacement["targets"]:
+                    # Artigo da própria resolução depois da redação nova.
+                    flushArticle()
+                    replacement = None
+
+                if replacement:
+                    articleLineBuffer.append(text)
+                    positionBuffer.append(elementPosition(el))
+                    previousLine = ""
+                    continue
+
             if (m := CAP_RE.match(text)):
                 flushArticle()
                 currentChapter = m.group(1)     # ex: 'I', 'II'…
@@ -244,4 +299,10 @@ class HierarchySplitter:
                 positionBuffer.append(elementPosition(el))
 
         flushArticle()
+
+        # Siglas por extenso em cada chunk, para a busca casar com o nome completo.
+        acronyms = extractAcronyms("\n".join((el.text or "") for el in elements))
+        applyAcronyms(docs, acronyms)
+        docs["siglas"] = acronyms
+
         return docs
